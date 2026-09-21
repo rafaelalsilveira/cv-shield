@@ -1,3 +1,4 @@
+
 # CV Shield
 
 CV Shield is a document analysis tool designed to detect potentially hidden content and suspicious instructions in PDF resumes, including possible prompt injection attempts targeting AI-powered recruitment systems.
@@ -31,17 +32,19 @@ Future iterations may include n8n integration for workflow automation and AI-bas
 ## Tech Stack
 
 - Python
-- PDF parsing (library to be defined during development)
+- PDF parsing with pypdf
 - Git & GitHub for version control
 - n8n (planned, for later integration)
 
 ## Development Roadmap
 
-- [ ] Step 1 — Project definition and initial setup
-- [ ] Step 2 — Environment setup and PDF structure research
-- [ ] Step 3 — First hidden-text detector
-- [ ] Step 4 — AI-based analysis of suspicious instructions
-- [ ] Step 5 — n8n integration and final report generation
+- [x] Step 1 — Project definition and initial setup
+- [x] Step 2 — Environment setup and basic PDF text extraction
+- [ ] Step 3 — Hidden-text detection and PDF structure analysis
+- [x] Step 4 — Initial suspicious-pattern detector
+- [ ] Step 5 — AI-based analysis of suspicious instructions
+- [ ] Step 6 — n8n integration and structured report generation
+- [ ] Step 7 — Automated testing and validation
 
 ## Status
 
