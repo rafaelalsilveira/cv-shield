@@ -1,3 +1,5 @@
+import json
+
 from pypdf import PdfReader
 from os.path import basename
 from src.detector import detect_suspicious_patterns
@@ -32,6 +34,8 @@ def main():
 
     findings = detect_suspicious_patterns(extracted_text)
     report = create_report(pdf_path, findings)
+    print("Structured report:")
+    print(json.dumps(report, indent=4, ensure_ascii=False))
 
     print("Texto extraído do currículo:")
     print(extracted_text)
