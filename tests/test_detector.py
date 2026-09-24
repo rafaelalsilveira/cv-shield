@@ -1,6 +1,7 @@
 import unittest
 
 from src.detector import detect_suspicious_patterns
+from src.main import create_report
 
 
 class TestDetector(unittest.TestCase):
@@ -68,6 +69,21 @@ class TestDetector(unittest.TestCase):
         findings = detect_suspicious_patterns(text)
 
         self.assertEqual(findings, [])
+
+    def test_create_report_contains_expected_fields(self):
+        findings = [
+            {
+                "category": "instruction_override",
+                "pattern": "ignore previous instructions",
+            }
+        ]
+
+        report = create_report("examples/sample_resume.pdf", findings)
+
+        self.assertEqual(report["file"], "sample_resume.pdf")
+        self.assertEqual(report["status"], "completed")
+        self.assertEqual(report["summary"]["finding_count"], 1)
+        self.assertEqual(report["findings"], findings)
 
 
 if __name__ == "__main__":
