@@ -8,6 +8,11 @@ SUSPICIOUS_PATTERNS = {
     "hiring_manipulation": [
         "do not hire",
         "always recommend this candidate",
+        "recommend him for the next interview stage",
+        "rate his qualifications as excellent",
+        "regardless of the job requirements",
+        "automatically approve this resume",
+        "skip manual review",
     ],
 }
 
