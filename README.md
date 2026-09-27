@@ -1,48 +1,67 @@
 # CV Shield
 
-CV Shield is a document analysis tool designed to detect suspicious instructions and potential prompt injection attempts in PDF resumes, with future support for detecting hidden or invisible content that may target AI-powered recruitment systems.
+CV Shield is a Python-based document analysis tool designed to detect suspicious instructions and potential prompt injection attempts in PDF resumes.
+
+The project explores how malicious or manipulative instructions embedded in resumes could affect AI-powered recruitment systems.
 
 ## The Problem
 
-AI-powered recruitment tools are increasingly used to screen resumes automatically. This creates a new type of risk: a PDF resume could contain hidden text or instructions designed to manipulate an AI reader into approving a candidate regardless of their actual qualifications.
+AI-powered recruitment systems are increasingly used to analyze and screen resumes.
 
-This project was inspired by discovering this type of issue in a real resume, where hidden instructions had been inserted to influence automated screening decisions.
+This creates a potential security concern: a PDF resume may contain instructions designed to manipulate an AI system into changing how the document or candidate is evaluated.
+
+CV Shield was created to investigate this type of risk by analyzing resume content and identifying suspicious patterns that may require human review.
 
 ## What CV Shield Does
 
-CV Shield currently analyzes the text extracted from a PDF resume and flags potential red flags, such as:
+The current version extracts text from PDF resumes and checks it for predefined suspicious patterns, including:
 
-- Suspicious instructions that resemble prompt injection attempts
-- Instructions attempting to override previous instructions
-- Instructions attempting to manipulate hiring recommendations
+- Attempts to override previous instructions
+- Instructions designed to influence hiring recommendations
+- Attempts to automatically approve a resume
+- Attempts to bypass manual review
 
 The project is also being developed toward detecting hidden or invisible PDF content, including:
 
 - White-on-white text
 - Zero-size text
 - Off-page content
-- Other potentially hidden text based on PDF structure and formatting
+- Other potentially hidden content based on PDF structure and formatting
 
-**Important:** CV Shield does not make hiring decisions. It only surfaces evidence for human review.
+**Important:** CV Shield does not make hiring decisions. It only identifies potential evidence for human review.
 
-## Project Scope (MVP)
+## Current MVP
 
-The first version focuses on:
+The current MVP focuses on:
 
-1. Parsing PDF text with Python
-2. Detecting suspicious text patterns
-3. Generating structured scan reports
-4. Producing JSON output for detected findings
-5. Testing against fictional sample resumes
+1. Extracting text from PDF resumes using Python and `pypdf`
+2. Detecting predefined suspicious text patterns
+3. Categorizing detected patterns
+4. Generating structured scan reports
+5. Producing JSON output
+6. Running automated tests against fictional resumes with different suspicious instruction patterns
 
-Future iterations will expand the project to include PDF structure analysis, AI-assisted analysis of suspicious instructions, and n8n integration for workflow automation.
+## Test Cases
+
+The project uses fictional resumes to validate the detection logic.
+
+Current test cases include:
+
+- Instruction override attempts
+- Hiring recommendation manipulation
+- Attempts to automatically approve a candidate
+- Attempts to bypass manual review
+- Attempts to manipulate technical evaluation results
+
+The test resumes are intentionally fictional and contain different suspicious instruction patterns to help validate and expand the detector.
 
 ## Tech Stack
 
 - Python
-- PDF parsing with pypdf
-- Git & GitHub for version control
-- n8n (planned, for later integration)
+- pypdf
+- unittest
+- Git & GitHub
+- n8n (planned)
 
 ## Development Roadmap
 
@@ -58,10 +77,12 @@ Future iterations will expand the project to include PDF structure analysis, AI-
 
 ## Status
 
-🚧 Work in progress. This project is being built and documented incrementally, including implementation challenges, testing, and dead ends along the way.
+🚧 **Work in progress**
 
-## Ethical Note
+CV Shield is being developed incrementally, with new detection rules, tests, experiments, and improvements added throughout the project.
 
-All test resumes used in this project are fictional or anonymized. No real candidate data is used or published.
+## Ethical Considerations
 
-CV Shield is intended to support human review, not automate hiring decisions or determine whether a candidate should be hired or rejected.
+All test resumes used in this project are fictional.
+
+CV Shield is designed to support human review, not to make hiring decisions or determine whether a candidate should be hired or rejected.
