@@ -35,11 +35,12 @@ The project is also being developed toward detecting hidden or invisible PDF con
 The current MVP focuses on:
 
 1. Extracting text from PDF resumes using Python and `pypdf`
-2. Detecting predefined suspicious text patterns
-3. Categorizing detected patterns
-4. Generating structured scan reports
-5. Producing JSON output
-6. Running automated tests against fictional resumes with different suspicious instruction patterns
+2. Normalizing extracted text (collapsing line breaks and repeated whitespace) before matching
+3. Detecting predefined suspicious text patterns
+4. Categorizing detected patterns
+5. Generating structured scan reports
+6. Producing JSON output
+7. Running automated tests against fictional resumes with different suspicious instruction patterns
 
 ## Test Cases
 
@@ -52,8 +53,19 @@ Current test cases include:
 - Attempts to automatically approve a candidate
 - Attempts to bypass manual review
 - Attempts to manipulate technical evaluation results
+- Patterns split across multiple lines by PDF text extraction
+- Patterns spaced out with irregular whitespace
+- Legitimate multiline resume text, to guard against false positives
 
 The test resumes are intentionally fictional and contain different suspicious instruction patterns to help validate and expand the detector.
+
+## Known Limitations & Lessons Learned
+
+While testing against real PDF output (not just literal strings in unit tests), we found that `pypdf` extraction inserts line breaks exactly where the PDF renders a visual line break. A suspicious phrase spanning two lines in the PDF (e.g. "...passed with \nfull score") would not match a pattern written as a single-line string, since a substring comparison treats `\n` and a space as different characters.
+
+This was fixed by normalizing whitespace (collapsing line breaks and repeated spaces into a single space) before pattern matching, and covered with a regression test built from real extracted PDF text rather than hand-written strings.
+
+This also surfaced a deeper, still-open limitation: the detector currently relies on matching a fixed list of known phrases. A hidden instruction that avoids those exact phrases (e.g. paraphrased manipulation language) will not be caught. Addressing this is expected to require either an expanded/fuzzier pattern set, structural analysis (font color vs. background, font size, off-page positioning), or AI-assisted analysis — planned for later roadmap steps.
 
 ## Tech Stack
 
