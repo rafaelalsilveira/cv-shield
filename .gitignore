@@ -9,6 +9,7 @@ venv/
 # Secrets
 .env
 .env.*
+!.env.example
 
 # Test and build files
 .pytest_cache/

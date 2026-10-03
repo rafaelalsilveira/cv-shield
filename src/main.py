@@ -1,9 +1,13 @@
 import json
 
+from dotenv import load_dotenv
 from pypdf import PdfReader
 from os.path import basename
 from src.detector import detect_suspicious_patterns
 from src.hidden_text import extract_text_fragments, find_hidden_text
+from src.ai_analysis import analyze_with_ai
+
+load_dotenv()
 
 
 def extract_text_from_pdf(pdf_path):
@@ -17,7 +21,7 @@ def extract_text_from_pdf(pdf_path):
     return text
 
 
-def create_report(pdf_path, findings):
+def create_report(pdf_path, findings, ai_assessment=None):
     return {
         "file": basename(pdf_path),
         "status": "completed",
@@ -25,6 +29,7 @@ def create_report(pdf_path, findings):
             "finding_count": len(findings),
         },
         "findings": findings,
+        "ai_assessment": ai_assessment,
     }
 
 
@@ -37,7 +42,8 @@ def main():
     hidden_findings = find_hidden_text(fragments)
 
     all_findings = text_findings + hidden_findings
-    report = create_report(pdf_path, all_findings)
+    ai_assessment = analyze_with_ai(extracted_text, all_findings)
+    report = create_report(pdf_path, all_findings, ai_assessment)
 
     print("Structured report:")
     print(json.dumps(report, indent=4, ensure_ascii=False))
@@ -62,6 +68,11 @@ def main():
 
     else:
         print("Nenhum padrão suspeito encontrado.")
+
+    print("\nParecer da IA:")
+    print(f"  Nível de risco: {report['ai_assessment']['risk_level']}")
+    print(f"  Justificativa: {report['ai_assessment']['reasoning']}")
+    print(f"  Recomendação: {report['ai_assessment']['recommendation']}")
 
 
 if __name__ == "__main__":
