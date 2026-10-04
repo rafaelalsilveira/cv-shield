@@ -1,0 +1,91 @@
+{
+  "name": "CV Shield - Analisar currículo",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "c7308649-f97c-404f-a7f7-771e44582b02",
+      "name": "Iniciar análise"
+    },
+    {
+      "parameters": {
+        "fileSelector": "C:\\Users\\User\\.n8n-files\\CV Ra.pdf",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        224,
+        0
+      ],
+      "id": "74de50a7-c0fb-4b24-b035-cc479ddc43bb",
+      "name": "Ler currículo (PDF)"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:8000/analyze",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        448,
+        0
+      ],
+      "id": "374d2b51-b3a0-4e78-805d-130e9550fe23",
+      "name": "Analisar com CV Shield"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Iniciar análise": {
+      "main": [
+        [
+          {
+            "node": "Ler currículo (PDF)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ler currículo (PDF)": {
+      "main": [
+        [
+          {
+            "node": "Analisar com CV Shield",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "60b7d26b-d5de-42fe-86cb-139ba61ceb97",
+  "nodeGroups": [],
+  "id": "WhCqhBlaTGItxtIB",
+  "tags": []
+}
