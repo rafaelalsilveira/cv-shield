@@ -50,6 +50,7 @@ The current MVP focuses on:
 11. Exposing the full analysis pipeline as an HTTP API (FastAPI)
 12. Receiving resumes through an n8n upload form that calls the API
 13. Validating uploads before analysis (PDF signature check and a 5 MB size limit)
+14. Testing the API endpoints automatically, with the AI call mocked
 
 ## API and n8n Integration
 
@@ -132,10 +133,11 @@ Current test cases include:
 - A paraphrased manipulation attempt that avoids every known trigger phrase, caught only by the hidden text detector
 - A legitimate resume with white text on a colored sidebar (a known false positive, documented below)
 - AI assessment behavior: skipping the API call when there are no findings, parsing a valid response, handling a malformed response, handling an API/network failure, and handling a missing API key, all using a mocked client
+- API behavior: health check, a clean resume returning no findings, a suspicious resume returning hidden text findings, rejection of non-PDF files, oversized files and corrupted PDFs, a request with no file, and deletion of the temporary file after the analysis, all with the AI call mocked
 
 The test resumes are intentionally fictional and contain different suspicious instruction and hidden-text patterns to help validate and expand the detectors.
 
-The API and the n8n workflow were checked manually (through the Swagger page and through the n8n form) with a clean resume and with a resume containing paraphrased hidden text. Automated tests for the API are planned.
+The suite currently has 35 tests (one of them is the documented expected failure). The API tests use FastAPI's `TestClient`, so they run without a live server, network access or API quota. The API and the n8n workflow were also checked manually (through the Swagger page and through the n8n form) with a clean resume and with a resume containing paraphrased hidden text.
 
 ## Known Limitations & Lessons Learned
 
@@ -157,6 +159,8 @@ To make the pipeline reusable, the analysis logic was moved out of `main()` into
 
 While building the n8n workflow, two details were not obvious. First, n8n restricts which folders its file nodes can read, so reading a PDF from an arbitrary project folder fails with "Access to the file is not allowed". Second, the binary field created by the form is named after the field label with special characters replaced (`Currículo` became `Curr_culo`), so the HTTP Request node must reference that exact name. Replacing the file-reading node with an upload form avoided the first problem entirely and made the workflow easier to use.
 
+When running the API tests, Starlette prints a deprecation warning saying that using `httpx` with its test client is deprecated and that `httpx2` should be installed instead. The tests pass with the pinned `httpx` version, so this is not blocking, but it is worth revisiting when the dependencies are next updated.
+
 ## Tech Stack
 
 - Python
@@ -176,7 +180,7 @@ While building the n8n workflow, two details were not obvious. First, n8n restri
 - [x] **Step 5: JSON output and automated testing**
 - [x] **Step 6: Hidden-text detection and PDF structure analysis**
 - [x] **Step 7: AI-assisted analysis of suspicious instructions**
-- [ ] **Step 8: n8n integration and workflow automation** (API and n8n workflow done; automated API tests pending)
+- [x] **Step 8: n8n integration and workflow automation**
 - [ ] **Step 9: Expanded testing and validation**
 
 ## Status
