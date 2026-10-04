@@ -33,8 +33,8 @@ def create_report(pdf_path, findings, ai_assessment=None):
     }
 
 
-def main():
-    pdf_path = "examples/sample_resume.pdf"
+def analyze_pdf(pdf_path):
+    """Run the full analysis pipeline on a PDF and return the report (dict)."""
     extracted_text = extract_text_from_pdf(pdf_path)
     text_findings = detect_suspicious_patterns(extracted_text)
 
@@ -43,7 +43,14 @@ def main():
 
     all_findings = text_findings + hidden_findings
     ai_assessment = analyze_with_ai(extracted_text, all_findings)
-    report = create_report(pdf_path, all_findings, ai_assessment)
+
+    return create_report(pdf_path, all_findings, ai_assessment)
+
+
+def main():
+    pdf_path = "examples/sample_resume.pdf"
+    report = analyze_pdf(pdf_path)
+    extracted_text = extract_text_from_pdf(pdf_path)
 
     print("Structured report:")
     print(json.dumps(report, indent=4, ensure_ascii=False))
