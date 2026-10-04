@@ -1,143 +1,80 @@
 # CV Shield
 
-CV Shield is a Python-based document analysis tool designed to detect suspicious instructions and potential prompt injection attempts in PDF resumes.
+CV Shield is a Python-based tool for analyzing PDF resumes and detecting suspicious content that may attempt to manipulate AI-powered recruitment systems.
 
-The project explores how malicious or manipulative instructions embedded in resumes could affect AI-powered recruitment systems.
+The project was created as a portfolio project focused on Python, AI, automation, and document analysis.
 
 ## The Problem
 
-AI-powered recruitment systems are increasingly used to analyze and screen resumes.
+As recruitment processes increasingly use AI to analyze resumes, documents can potentially contain hidden or manipulative instructions designed to influence automated systems.
 
-This creates a potential security concern: a PDF resume may contain instructions designed to manipulate an AI system into changing how the document or candidate is evaluated.
+Examples include instructions attempting to:
 
-CV Shield was created to investigate this type of risk by analyzing resume content and identifying suspicious patterns that may require human review.
+- Override previous instructions
+- Influence hiring recommendations
+- Automatically approve a resume
+- Bypass manual review
+- Manipulate technical evaluations
+
+CV Shield was created to identify this type of content and provide evidence for human review.
 
 ## What CV Shield Does
 
 CV Shield analyzes a PDF resume using three layers of detection:
 
-1. **Suspicious pattern detector**: extracts the text and checks it against a list of known manipulative phrases, including:
-   - Attempts to override previous instructions
-   - Instructions designed to influence hiring recommendations
-   - Attempts to automatically approve a resume
-   - Attempts to bypass manual review
-
-2. **Hidden text detector**: inspects each text fragment's font size, color and position on the page (not just its content), and flags:
-   - Font sizes below 3pt (unreadable to a human)
-   - Near-white text color (including pure white and colors very close to white, in both RGB and CMYK)
-   - Text positioned outside the visible page area
-
-   This second detector can catch hidden instructions even when they avoid every known trigger phrase, since it looks at how the text is rendered rather than what it says.
-
-3. **AI-assisted analysis**: sends the resume text and the findings from the two detectors above to an LLM (via Groq's free API), which reasons about them together and returns a risk level (none/low/medium/high), a short explanation, and a recommended next step for the human reviewer. This step is skipped automatically when there are no findings, to avoid unnecessary API calls.
+1. **Suspicious pattern detector**: extracts the text and checks it against a list of known manipulative phrases.
+2. **Hidden text detector**: inspects each text fragment's font size, color and position (not just its content) and flags font sizes below 3pt, near-white text (RGB and CMYK) and text positioned outside the visible page. It can catch hidden instructions even when they avoid every known phrase, because it looks at how the text is rendered rather than what it says.
+3. **AI-assisted analysis**: sends the text and the findings of the two detectors to an LLM (Groq's free API), which returns a risk level (`none`, `low`, `medium`, `high`), a short explanation and a recommended next step. It is skipped when there are no findings, to avoid unnecessary API calls.
 
 **Important:** CV Shield does not make hiring decisions. It only identifies potential evidence for human review.
 
-## Current MVP
+## How It Works
 
-The current MVP focuses on:
-
-1. Extracting text from PDF resumes using Python and `pypdf`
-2. Normalizing extracted text (collapsing line breaks and repeated whitespace) before matching
-3. Detecting predefined suspicious text patterns
-4. Extracting per-fragment style metadata (font size, color, position) from the PDF
-5. Detecting hidden text based on font size, color and off-page position
-6. Sending findings to an LLM for a complementary risk assessment
-7. Categorizing and merging findings from all detectors, plus the AI assessment, into a single report
-8. Generating structured scan reports
-9. Producing JSON output
-10. Running automated tests (including mocked tests for the AI integration, so the suite never depends on network access or API quota)
-11. Exposing the full analysis pipeline as an HTTP API (FastAPI)
-12. Receiving resumes through an n8n upload form that calls the API
-13. Validating uploads before analysis (PDF signature check and a 5 MB size limit)
-14. Testing the API endpoints automatically, with the AI call mocked
-
-## API and n8n Integration
-
-The analysis pipeline is exposed through a small HTTP API, so other tools (such as n8n) can send a PDF and receive the JSON report without needing access to the Python code or the project folder.
-
-### Running the API
-
-1. Install the dependencies (all versions are pinned):
-
-```
-   pip install -r requirements.txt
+```mermaid
+flowchart LR
+    A[PDF resume] --> B[n8n upload form]
+    B --> C[CV Shield API<br/>POST /analyze]
+    C --> D[Phrase detector]
+    C --> E[Hidden text detector]
+    D --> F[AI assessment]
+    E --> F
+    F --> G[JSON report]
 ```
 
-2. Create a `.env` file from the template and add your Groq API key (the `.env` file is ignored by Git and must never be committed):
+The command line script and the API share the same function (`analyze_pdf` in `src/main.py`), so the analysis logic exists in one place only.
 
-```
-   Copy-Item .env.example .env
-```
+## Quick Start
 
-   Then edit `.env` and set `GROQ_API_KEY`.
-
-3. Start the server from the project root:
-
-```
-   python -m uvicorn src.api:app --reload
+```powershell
+pip install -r requirements.txt
+Copy-Item .env.example .env
+python -m uvicorn src.api:app --reload
 ```
 
-4. Open `http://127.0.0.1:8000/docs` to see the interactive documentation generated by FastAPI, where you can also upload a PDF and try the API from the browser.
+Then set `GROQ_API_KEY` in the `.env` file (it is ignored by Git and must never be committed) and open `http://127.0.0.1:8000/docs` to try the API from the browser.
 
-### Endpoints
+## API
 
-| Method | Path       | Description                                                       |
-|--------|------------|-------------------------------------------------------------------|
-| GET    | `/health`  | Simple check that the API is running                              |
-| POST   | `/analyze` | Receives a PDF (`multipart/form-data`, field `file`), returns the report |
+| Method | Path       | Description                                                              |
+|--------|------------|--------------------------------------------------------------------------|
+| GET    | `/health`  | Simple check that the API is running                                     |
+| POST   | `/analyze` | Receives a PDF (`multipart/form-data`, field `file`) and returns the report |
 
-`POST /analyze` runs the same pipeline as the command line (`analyze_pdf` in `src/main.py`), so there is no duplicated logic between the script and the API. The report contains the findings and the AI assessment, but not the full resume text.
+The report contains the findings and the AI assessment, but not the full resume text. Uploads are validated before the analysis: files above 5 MB are rejected (413), files without the PDF signature or that cannot be parsed are rejected (400), and the temporary copy of the file is deleted right after the analysis.
 
-Upload validation:
-- Files larger than 5 MB are rejected (HTTP 413)
-- Files that do not start with the PDF signature (`%PDF`) are rejected (HTTP 400)
-- PDFs that cannot be parsed are rejected (HTTP 400)
-- The uploaded file is written to a temporary location and deleted right after the analysis
+## n8n Integration
 
-### n8n workflow
+An exported n8n workflow (`n8n/cv-shield-analyze-resume.json`) provides an upload form that sends the PDF to the API and shows the report. Setup details are in [docs/n8n.md](docs/n8n.md).
 
-The `n8n/` folder contains an exported workflow (`cv-shield-analyze-resume.json`) with two nodes:
+## Tests
 
-1. **Receber currículo (formulário)**: an n8n Form Trigger that creates a web page with a PDF upload field.
-2. **Analisar com CV Shield**: an HTTP Request node that sends the uploaded PDF to `POST http://127.0.0.1:8000/analyze` and receives the report.
+The suite has 35 tests (one of them is a documented expected failure). The AI integration and the API endpoints are tested with mocks, so the suite never depends on network access or API quota.
 
-To use it:
+```powershell
+python -m unittest discover -s tests
+```
 
-1. Start the API (see above) and n8n.
-2. In n8n, open the workflow menu, choose **Import from file...** and select `n8n/cv-shield-analyze-resume.json`.
-3. Click **Execute workflow**, upload a PDF in the form that opens, and check the output of the HTTP Request node.
-
-Note: n8n names the binary field after the form field label, replacing characters it does not accept. The label `Currículo` becomes `Curr_culo`, which is the value the HTTP Request node expects in **Input Data Field Name**. If you rename the form field, update that value as well.
-
-### Privacy note
-
-When the detectors find something, the resume text is sent to the Groq API for the AI assessment. Use fictional or anonymized resumes unless you are comfortable with that.
-
-## Test Cases
-
-The project uses fictional resumes to validate the detection logic.
-
-Current test cases include:
-
-- Instruction override attempts
-- Hiring recommendation manipulation
-- Attempts to automatically approve a candidate
-- Attempts to bypass manual review
-- Attempts to manipulate technical evaluation results
-- Patterns split across multiple lines by PDF text extraction
-- Patterns spaced out with irregular whitespace
-- Legitimate multiline resume text, to guard against false positives
-- Hidden text at unreadable font sizes (white and near-white, RGB and CMYK)
-- Hidden text positioned off the visible page, even when rendered in plain black
-- A paraphrased manipulation attempt that avoids every known trigger phrase, caught only by the hidden text detector
-- A legitimate resume with white text on a colored sidebar (a known false positive, documented below)
-- AI assessment behavior: skipping the API call when there are no findings, parsing a valid response, handling a malformed response, handling an API/network failure, and handling a missing API key, all using a mocked client
-- API behavior: health check, a clean resume returning no findings, a suspicious resume returning hidden text findings, rejection of non-PDF files, oversized files and corrupted PDFs, a request with no file, and deletion of the temporary file after the analysis, all with the AI call mocked
-
-The test resumes are intentionally fictional and contain different suspicious instruction and hidden-text patterns to help validate and expand the detectors.
-
-The suite currently has 35 tests (one of them is the documented expected failure). The API tests use FastAPI's `TestClient`, so they run without a live server, network access or API quota. The API and the n8n workflow were also checked manually (through the Swagger page and through the n8n form) with a clean resume and with a resume containing paraphrased hidden text.
+The tests use fictional resumes covering instruction overrides, hiring manipulation, patterns split across lines, hidden text (tiny, near-white and off-page), a paraphrased attempt that only the structural detector catches, and a legitimate resume with white text on a colored sidebar (a known false positive, described below).
 
 ## Known Limitations & Lessons Learned
 
@@ -157,9 +94,13 @@ While preparing the API, we found that `requirements.txt` listed only `pypdf`, e
 
 To make the pipeline reusable, the analysis logic was moved out of `main()` into a function that returns the report (`analyze_pdf`). The command-line script and the API both call it, instead of each keeping its own copy.
 
-While building the n8n workflow, two details were not obvious. First, n8n restricts which folders its file nodes can read, so reading a PDF from an arbitrary project folder fails with "Access to the file is not allowed". Second, the binary field created by the form is named after the field label with special characters replaced (`Currículo` became `Curr_culo`), so the HTTP Request node must reference that exact name. Replacing the file-reading node with an upload form avoided the first problem entirely and made the workflow easier to use.
+While building the n8n workflow, n8n's file access restrictions and the way it names binary fields caused two non-obvious errors. Replacing the file-reading node with an upload form avoided the first one and made the workflow easier to use (details in [docs/n8n.md](docs/n8n.md)).
 
 When running the API tests, Starlette prints a deprecation warning saying that using `httpx` with its test client is deprecated and that `httpx2` should be installed instead. The tests pass with the pinned `httpx` version, so this is not blocking, but it is worth revisiting when the dependencies are next updated.
+
+## Privacy Note
+
+When the detectors find something, the resume text is sent to the Groq API for the AI assessment. Use fictional or anonymized resumes unless you are comfortable with that.
 
 ## Tech Stack
 
