@@ -2,29 +2,30 @@
   "name": "CV Shield - Analisar currículo",
   "nodes": [
     {
-      "parameters": {},
-      "type": "n8n-nodes-base.manualTrigger",
-      "typeVersion": 1,
-      "position": [
-        0,
-        0
-      ],
-      "id": "c7308649-f97c-404f-a7f7-771e44582b02",
-      "name": "Iniciar análise"
-    },
-    {
       "parameters": {
-        "fileSelector": "C:\\Users\\User\\.n8n-files\\CV Ra.pdf",
+        "formTitle": "CV Shield",
+        "formDescription": "Envie um currículo em PDF para análise",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Currículo",
+              "fieldType": "file",
+              "acceptFileTypes": ".pdf",
+              "requiredField": true
+            }
+          ]
+        },
         "options": {}
       },
-      "type": "n8n-nodes-base.readWriteFile",
-      "typeVersion": 1.1,
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
       "position": [
-        224,
-        0
+        96,
+        16
       ],
-      "id": "74de50a7-c0fb-4b24-b035-cc479ddc43bb",
-      "name": "Ler currículo (PDF)"
+      "id": "e9b22f0f-1db1-4f9c-9f9d-078fcaae9e23",
+      "name": "Receber currículo (formulário)",
+      "webhookId": "58e3d076-feaf-48e0-ac79-e514dede25e9"
     },
     {
       "parameters": {
@@ -37,7 +38,7 @@
             {
               "parameterType": "formBinaryData",
               "name": "file",
-              "inputDataFieldName": "data"
+              "inputDataFieldName": "Curr_culo"
             }
           ]
         },
@@ -46,8 +47,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.5,
       "position": [
-        448,
-        0
+        320,
+        16
       ],
       "id": "374d2b51-b3a0-4e78-805d-130e9550fe23",
       "name": "Analisar com CV Shield"
@@ -55,18 +56,7 @@
   ],
   "pinData": {},
   "connections": {
-    "Iniciar análise": {
-      "main": [
-        [
-          {
-            "node": "Ler currículo (PDF)",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Ler currículo (PDF)": {
+    "Receber currículo (formulário)": {
       "main": [
         [
           {
@@ -84,7 +74,7 @@
     "binaryMode": "separate",
     "availableInMCP": false
   },
-  "versionId": "60b7d26b-d5de-42fe-86cb-139ba61ceb97",
+  "versionId": "c9508a52-cd6c-40e0-abe1-e4163774c573",
   "nodeGroups": [],
   "id": "WhCqhBlaTGItxtIB",
   "tags": []
