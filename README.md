@@ -14,7 +14,7 @@ CV Shield was created to investigate this type of risk by analyzing resume conte
 
 ## What CV Shield Does
 
-CV Shield analyzes a PDF resume using two independent detectors:
+CV Shield analyzes a PDF resume using three layers of detection:
 
 1. **Suspicious pattern detector**: extracts the text and checks it against a list of known manipulative phrases, including:
    - Attempts to override previous instructions
@@ -27,7 +27,9 @@ CV Shield analyzes a PDF resume using two independent detectors:
    - Near-white text color (including pure white and colors very close to white, in both RGB and CMYK)
    - Text positioned outside the visible page area
 
-This second detector can catch hidden instructions even when they avoid every known trigger phrase, since it looks at how the text is rendered rather than what it says.
+   This second detector can catch hidden instructions even when they avoid every known trigger phrase, since it looks at how the text is rendered rather than what it says.
+
+3. **AI-assisted analysis**: sends the resume text and the findings from the two detectors above to an LLM (via Groq's free API), which reasons about them together and returns a risk level (none/low/medium/high), a short explanation, and a recommended next step for the human reviewer. This step is skipped automatically when there are no findings, to avoid unnecessary API calls.
 
 **Important:** CV Shield does not make hiring decisions. It only identifies potential evidence for human review.
 
@@ -40,10 +42,11 @@ The current MVP focuses on:
 3. Detecting predefined suspicious text patterns
 4. Extracting per-fragment style metadata (font size, color, position) from the PDF
 5. Detecting hidden text based on font size, color and off-page position
-6. Categorizing and merging findings from both detectors into a single report
-7. Generating structured scan reports
-8. Producing JSON output
-9. Running automated tests against fictional resumes with different suspicious instruction and hidden-text patterns
+6. Sending findings to an LLM for a complementary risk assessment
+7. Categorizing and merging findings from all detectors, plus the AI assessment, into a single report
+8. Generating structured scan reports
+9. Producing JSON output
+10. Running automated tests (including mocked tests for the AI integration, so the suite never depends on network access or API quota)
 
 ## Test Cases
 
@@ -63,6 +66,7 @@ Current test cases include:
 - Hidden text positioned off the visible page, even when rendered in plain black
 - A paraphrased manipulation attempt that avoids every known trigger phrase, caught only by the hidden text detector
 - A legitimate resume with white text on a colored sidebar (a known false positive, documented below)
+- AI assessment behavior: skipping the API call when there are no findings, parsing a valid response, handling a malformed response, handling an API/network failure, and handling a missing API key, all using a mocked client
 
 The test resumes are intentionally fictional and contain different suspicious instruction and hidden-text patterns to help validate and expand the detectors.
 
@@ -78,12 +82,15 @@ The structural detector introduces its own known limitation: it assumes the page
 
 We also found that `pypdf`'s reported text coordinates differed between versions (5.9.0 vs. 6.19.0) when testing the same PDF, which could silently change hidden-text detection results. The `pypdf` version is now pinned in `requirements.txt` to the version the detector was built and tested against.
 
+For the AI-assisted analysis, we initially tried the Anthropic API, but it requires a paid plan beyond a small initial credit. We switched to Groq, which offers a genuinely free tier (rate-limited, no credit card required). Groq's available model catalog differs from what its own documentation lists and can change over time, so the model name is confirmed by querying `client.models.list()` against the actual account rather than hardcoding a name from documentation alone.
+
 ## Tech Stack
 
 - Python
 - pypdf (version pinned in `requirements.txt`)
 - unittest
 - Git & GitHub
+- Groq API (free tier) for AI-assisted analysis
 - n8n (planned)
 
 ## Development Roadmap
@@ -94,7 +101,7 @@ We also found that `pypdf`'s reported text coordinates differed between versions
 - [x] **Step 4: Structured scan report generation**
 - [x] **Step 5: JSON output and automated testing**
 - [x] **Step 6: Hidden-text detection and PDF structure analysis**
-- [ ] **Step 7: AI-assisted analysis of suspicious instructions**
+- [x] **Step 7: AI-assisted analysis of suspicious instructions**
 - [ ] **Step 8: n8n integration and workflow automation**
 - [ ] **Step 9: Expanded testing and validation**
 
