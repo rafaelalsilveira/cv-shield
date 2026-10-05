@@ -1,49 +1,49 @@
 # CV Shield
 
-CV Shield is a Python-based tool for analyzing PDF resumes and detecting suspicious content that may attempt to manipulate AI-powered recruitment systems.
+CV Shield é uma ferramenta em Python que analisa currículos em PDF e detecta conteúdo suspeito que possa tentar manipular sistemas de recrutamento com IA.
 
-The project was created as a portfolio project focused on Python, AI, automation, and document analysis.
+O projeto foi criado como projeto de portfólio, com foco em Python, IA, automação e análise de documentos.
 
-## The Problem
+## O Problema
 
-As recruitment processes increasingly use AI to analyze resumes, documents can potentially contain hidden or manipulative instructions designed to influence automated systems.
+Como os processos seletivos usam cada vez mais IA para analisar currículos, um documento pode conter instruções ocultas ou manipulativas, feitas para influenciar sistemas automatizados.
 
-Examples include instructions attempting to:
+Alguns exemplos de instruções que tentam:
 
-- Override previous instructions
-- Influence hiring recommendations
-- Automatically approve a resume
-- Bypass manual review
-- Manipulate technical evaluations
+- Sobrescrever instruções anteriores
+- Influenciar recomendações de contratação
+- Aprovar um currículo automaticamente
+- Pular a revisão manual
+- Manipular avaliações técnicas
 
-CV Shield was created to identify this type of content and provide evidence for human review.
+O CV Shield foi criado para identificar esse tipo de conteúdo e fornecer evidências para revisão humana.
 
-## What CV Shield Does
+## O Que o CV Shield Faz
 
-CV Shield analyzes a PDF resume using three layers of detection:
+O CV Shield analisa um currículo em PDF usando três camadas de detecção:
 
-1. **Suspicious pattern detector**: extracts the text and checks it against a list of known manipulative phrases.
-2. **Hidden text detector**: inspects each text fragment's font size, color and position (not just its content) and flags font sizes below 3pt, near-white text (RGB and CMYK) and text positioned outside the visible page. It can catch hidden instructions even when they avoid every known phrase, because it looks at how the text is rendered rather than what it says.
-3. **AI-assisted analysis**: sends the text and the findings of the two detectors to an LLM (Groq's free API), which returns a risk level (`none`, `low`, `medium`, `high`), a short explanation and a recommended next step. It is skipped when there are no findings, to avoid unnecessary API calls.
+1. **Detector de frases suspeitas**: extrai o texto e compara com uma lista de frases manipulativas conhecidas.
+2. **Detector de texto oculto**: inspeciona o tamanho da fonte, a cor e a posição de cada trecho de texto (não só o conteúdo) e sinaliza fontes menores que 3pt, texto quase branco (RGB e CMYK) e texto posicionado fora da área visível da página. Ele consegue pegar instruções ocultas mesmo quando elas evitam todas as frases conhecidas, porque olha para como o texto é renderizado, e não para o que ele diz.
+3. **Análise assistida por IA**: envia o texto e os achados dos dois detectores para um LLM (API gratuita da Groq), que devolve um nível de risco (`none`, `low`, `medium`, `high`), uma explicação curta e uma recomendação de próximo passo. Essa etapa é pulada quando não há achados, para evitar chamadas desnecessárias à API.
 
-**Important:** CV Shield does not make hiring decisions. It only identifies potential evidence for human review.
+**Importante:** o CV Shield não toma decisões de contratação. Ele apenas aponta possíveis evidências para revisão humana.
 
-## How It Works
+## Como Funciona
 
 ```mermaid
 flowchart LR
-    A[PDF resume] --> B[n8n upload form]
-    B --> C[CV Shield API<br/>POST /analyze]
-    C --> D[Phrase detector]
-    C --> E[Hidden text detector]
-    D --> F[AI assessment]
+    A[Currículo em PDF] --> B[Formulário de upload n8n]
+    B --> C[API do CV Shield<br/>POST /analyze]
+    C --> D[Detector de frases]
+    C --> E[Detector de texto oculto]
+    D --> F[Análise com IA]
     E --> F
-    F --> G[JSON report]
+    F --> G[Relatório JSON]
 ```
 
-The command line script and the API share the same function (`analyze_pdf` in `src/main.py`), so the analysis logic exists in one place only.
+O script de linha de comando e a API usam a mesma função (`analyze_pdf` em `src/main.py`), então a lógica de análise existe em um único lugar.
 
-## Quick Start
+## Início Rápido
 
 ```powershell
 pip install -r requirements.txt
@@ -51,87 +51,87 @@ Copy-Item .env.example .env
 python -m uvicorn src.api:app --reload
 ```
 
-Then set `GROQ_API_KEY` in the `.env` file (it is ignored by Git and must never be committed) and open `http://127.0.0.1:8000/docs` to try the API from the browser.
+Depois, defina a `GROQ_API_KEY` no arquivo `.env` (ele é ignorado pelo Git e nunca deve ser commitado) e abra `http://127.0.0.1:8000/docs` para testar a API pelo navegador.
 
 ## API
 
-| Method | Path       | Description                                                              |
-|--------|------------|--------------------------------------------------------------------------|
-| GET    | `/health`  | Simple check that the API is running                                     |
-| POST   | `/analyze` | Receives a PDF (`multipart/form-data`, field `file`) and returns the report |
+| Método | Caminho    | Descrição                                                                   |
+|--------|------------|-----------------------------------------------------------------------------|
+| GET    | `/health`  | Verificação simples de que a API está rodando                               |
+| POST   | `/analyze` | Recebe um PDF (`multipart/form-data`, campo `file`) e devolve o relatório   |
 
-The report contains the findings and the AI assessment, but not the full resume text. Uploads are validated before the analysis: files above 5 MB are rejected (413), files without the PDF signature or that cannot be parsed are rejected (400), and the temporary copy of the file is deleted right after the analysis.
+O relatório contém os achados e a avaliação da IA, mas não o texto completo do currículo. Os uploads são validados antes da análise: arquivos acima de 5 MB são rejeitados (413), arquivos sem a assinatura de PDF ou que não podem ser lidos são rejeitados (400), e a cópia temporária do arquivo é apagada logo após a análise.
 
-## n8n Integration
+## Integração com n8n
 
-An exported n8n workflow (`n8n/cv-shield-analyze-resume.json`) provides an upload form that sends the PDF to the API and shows the report. Setup details are in [docs/n8n.md](docs/n8n.md).
+Um workflow do n8n exportado (`n8n/cv-shield-analyze-resume.json`) oferece um formulário de upload que envia o PDF para a API e mostra o relatório. Os detalhes de configuração estão em [docs/n8n.md](docs/n8n.md).
 
-## Tests
+## Testes
 
-The suite has 35 tests (one of them is a documented expected failure). The AI integration and the API endpoints are tested with mocks, so the suite never depends on network access or API quota.
+A suíte tem 35 testes (um deles é uma falha esperada documentada). A integração com a IA e os endpoints da API são testados com mocks, então a suíte nunca depende de rede nem da cota da API.
 
 ```powershell
 python -m unittest discover -s tests
 ```
 
-The tests use fictional resumes covering instruction overrides, hiring manipulation, patterns split across lines, hidden text (tiny, near-white and off-page), a paraphrased attempt that only the structural detector catches, and a legitimate resume with white text on a colored sidebar (a known false positive, described below).
+Os testes usam currículos fictícios que cobrem sobrescrita de instruções, manipulação de contratação, padrões divididos em várias linhas, texto oculto (minúsculo, quase branco e fora da página), uma tentativa parafraseada que só o detector estrutural pega e um currículo legítimo com texto branco sobre uma faixa colorida (um falso positivo conhecido, descrito abaixo).
 
-## Known Limitations & Lessons Learned
+## Limitações Conhecidas e Aprendizados
 
-While testing against real PDF output (not just literal strings in unit tests), we found that `pypdf` extraction inserts line breaks exactly where the PDF renders a visual line break. A suspicious phrase spanning two lines in the PDF (e.g. "...passed with \nfull score") would not match a pattern written as a single-line string, since a substring comparison treats `\n` and a space as different characters.
+Ao testar com PDFs reais (e não só com strings escritas à mão nos testes unitários), descobrimos que a extração do `pypdf` insere quebras de linha exatamente onde o PDF renderiza uma quebra visual. Uma frase suspeita dividida em duas linhas no PDF (por exemplo, "...passed with \nfull score") não casaria com um padrão escrito em uma linha só, já que a comparação de substring trata `\n` e espaço como caracteres diferentes.
 
-This was fixed by normalizing whitespace (collapsing line breaks and repeated spaces into a single space) before pattern matching, and covered with a regression test built from real extracted PDF text rather than hand-written strings.
+Isso foi corrigido normalizando os espaços em branco (quebras de linha e espaços repetidos viram um único espaço) antes da comparação, e coberto por um teste de regressão feito com texto extraído de um PDF real, e não com strings escritas à mão.
 
-This also surfaced a deeper limitation: the phrase-based detector relies on matching a fixed list of known strings, so a paraphrased instruction avoiding those exact phrases will not be caught. This was addressed by adding a second, structural detector that inspects font size, color and position directly, independent of wording. It successfully catches a paraphrased test case that the phrase-based detector misses.
+Isso também revelou uma limitação mais profunda: o detector de frases depende de uma lista fixa de textos conhecidos, então uma instrução parafraseada que evite essas frases exatas não será pega. Isso foi tratado com um segundo detector, estrutural, que inspeciona tamanho de fonte, cor e posição diretamente, independente das palavras. Ele pega com sucesso um caso de teste parafraseado que o detector de frases deixa passar.
 
-The structural detector introduces its own known limitation: it assumes the page background is white, so it only reasons about the text's own color, not what is behind it. A legitimate resume using white text on a colored sidebar (a common design pattern, demonstrated in `examples/test_colored_band_resume.pdf`) is currently flagged as a false positive. This is documented with a dedicated test marked `@expectedFailure`, so the suite records the limitation without treating it as a regression. Fixing this would require tracking background fills and rectangles drawn behind text, which is left for a future iteration.
+O detector estrutural traz uma limitação própria: ele assume que o fundo da página é branco, então só avalia a cor do próprio texto, e não o que está atrás dele. Um currículo legítimo com texto branco sobre uma faixa lateral colorida (um padrão de design comum, demonstrado em `examples/test_colored_band_resume.pdf`) hoje é sinalizado como falso positivo. Isso está documentado em um teste dedicado marcado com `@expectedFailure`, de modo que a suíte registra a limitação sem tratá-la como regressão. Corrigir isso exigiria rastrear preenchimentos e retângulos desenhados atrás do texto, e fica para uma iteração futura.
 
-We also found that `pypdf`'s reported text coordinates differed between versions (5.9.0 vs. 6.19.0) when testing the same PDF, which could silently change hidden-text detection results. The `pypdf` version is now pinned in `requirements.txt` to the version the detector was built and tested against.
+Também descobrimos que as coordenadas de texto reportadas pelo `pypdf` variaram entre versões (5.9.0 e 6.19.0) ao testar o mesmo PDF, o que poderia alterar silenciosamente os resultados da detecção de texto oculto. A versão do `pypdf` agora está fixada no `requirements.txt`, na versão em que o detector foi construído e testado.
 
-For the AI-assisted analysis, we initially tried the Anthropic API, but it requires a paid plan beyond a small initial credit. We switched to Groq, which offers a genuinely free tier (rate-limited, no credit card required). Groq's available model catalog differs from what its own documentation lists and can change over time, so the model name is confirmed by querying `client.models.list()` against the actual account rather than hardcoding a name from documentation alone.
+Para a análise assistida por IA, começamos tentando a API da Anthropic, mas ela exige um plano pago depois de um pequeno crédito inicial. Trocamos para a Groq, que oferece um plano gratuito de verdade (com limite de requisições e sem cartão de crédito). O catálogo de modelos da Groq difere do que a própria documentação lista e pode mudar com o tempo, então o nome do modelo é confirmado consultando `client.models.list()` na conta real, em vez de ser fixado no código a partir da documentação.
 
-While preparing the API, we found that `requirements.txt` listed only `pypdf`, even though the project already imported `groq` and `python-dotenv` since the AI step. A fresh clone would have failed on import. All direct dependencies are now listed with pinned versions.
+Ao preparar a API, descobrimos que o `requirements.txt` listava só o `pypdf`, embora o projeto já importasse `groq` e `python-dotenv` desde a etapa de IA. Um clone novo falharia na importação. Agora todas as dependências diretas estão listadas, com versões fixadas.
 
-To make the pipeline reusable, the analysis logic was moved out of `main()` into a function that returns the report (`analyze_pdf`). The command-line script and the API both call it, instead of each keeping its own copy.
+Para tornar o pipeline reutilizável, a lógica de análise foi movida da `main()` para uma função que devolve o relatório (`analyze_pdf`). O script de linha de comando e a API chamam a mesma função, em vez de cada um manter uma cópia própria.
 
-While building the n8n workflow, n8n's file access restrictions and the way it names binary fields caused two non-obvious errors. Replacing the file-reading node with an upload form avoided the first one and made the workflow easier to use (details in [docs/n8n.md](docs/n8n.md)).
+Ao montar o workflow do n8n, as restrições de acesso a arquivos do n8n e o jeito como ele nomeia campos binários causaram dois erros nada óbvios. Trocar o nó de leitura de arquivo por um formulário de upload evitou o primeiro e deixou o workflow mais fácil de usar (detalhes em [docs/n8n.md](docs/n8n.md)).
 
-When running the API tests, Starlette prints a deprecation warning saying that using `httpx` with its test client is deprecated and that `httpx2` should be installed instead. The tests pass with the pinned `httpx` version, so this is not blocking, but it is worth revisiting when the dependencies are next updated.
+Ao rodar os testes da API, o Starlette imprime um aviso de depreciação dizendo que usar o `httpx` com o cliente de teste dele está obsoleto e que o `httpx2` deve ser instalado no lugar. Os testes passam com a versão fixada do `httpx`, então isso não bloqueia nada, mas vale revisar na próxima atualização das dependências.
 
-## Privacy Note
+## Nota de Privacidade
 
-When the detectors find something, the resume text is sent to the Groq API for the AI assessment. Use fictional or anonymized resumes unless you are comfortable with that.
+Quando os detectores encontram algo, o texto do currículo é enviado para a API da Groq para a avaliação da IA. Use currículos fictícios ou anonimizados, a menos que você aceite esse envio.
 
-## Tech Stack
+## Tecnologias
 
 - Python
-- pypdf (version pinned in `requirements.txt`)
+- pypdf (versão fixada no `requirements.txt`)
 - unittest
-- FastAPI and uvicorn (HTTP API)
-- Git & GitHub
-- Groq API (free tier) for AI-assisted analysis
-- n8n (workflow automation, runs locally)
+- FastAPI e uvicorn (API HTTP)
+- Git e GitHub
+- API da Groq (plano gratuito) para a análise assistida por IA
+- n8n (automação de workflows, roda localmente)
 
-## Development Roadmap
+## Roadmap de Desenvolvimento
 
-- [x] **Step 1: Project definition and initial setup**
-- [x] **Step 2: Environment setup and basic PDF text extraction**
-- [x] **Step 3: Initial suspicious-pattern detector**
-- [x] **Step 4: Structured scan report generation**
-- [x] **Step 5: JSON output and automated testing**
-- [x] **Step 6: Hidden-text detection and PDF structure analysis**
-- [x] **Step 7: AI-assisted analysis of suspicious instructions**
-- [x] **Step 8: n8n integration and workflow automation**
-- [ ] **Step 9: Expanded testing and validation**
+- [x] **Etapa 1: Definição do projeto e configuração inicial**
+- [x] **Etapa 2: Configuração do ambiente e extração básica de texto de PDF**
+- [x] **Etapa 3: Detector inicial de padrões suspeitos**
+- [x] **Etapa 4: Geração de relatório estruturado**
+- [x] **Etapa 5: Saída em JSON e testes automatizados**
+- [x] **Etapa 6: Detecção de texto oculto e análise da estrutura do PDF**
+- [x] **Etapa 7: Análise de instruções suspeitas assistida por IA**
+- [x] **Etapa 8: Integração com n8n e automação de workflow**
+- [ ] **Etapa 9: Testes e validação expandidos**
 
 ## Status
 
-🚧 **Work in progress**
+🚧 **Em desenvolvimento**
 
-CV Shield is being developed incrementally, with new detection rules, tests, experiments, and improvements added throughout the project.
+O CV Shield está sendo desenvolvido de forma incremental, com novas regras de detecção, testes, experimentos e melhorias sendo adicionados ao longo do projeto.
 
-## Ethical Considerations
+## Considerações Éticas
 
-All test resumes used in this project are fictional.
+Todos os currículos de teste usados neste projeto são fictícios.
 
-CV Shield is designed to support human review, not to make hiring decisions or determine whether a candidate should be hired or rejected.
+O CV Shield foi pensado para apoiar a revisão humana, e não para tomar decisões de contratação nem determinar se um candidato deve ser contratado ou rejeitado.
