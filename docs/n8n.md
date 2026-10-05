@@ -1,20 +1,20 @@
-# n8n integration
+# Integração com n8n
 
-The `n8n/` folder contains an exported workflow (`cv-shield-analyze-resume.json`) that sends a resume to the CV Shield API and shows the report.
+A pasta `n8n/` contém um workflow exportado (`cv-shield-analyze-resume.json`) que envia um currículo para a API do CV Shield e mostra o relatório.
 
 ## Workflow
 
-1. **Receber currículo (formulário)**: an n8n Form Trigger that creates a web page with a PDF upload field.
-2. **Analisar com CV Shield**: an HTTP Request node that sends the uploaded PDF to `POST http://127.0.0.1:8000/analyze` and receives the report.
+1. **Receber currículo (formulário)**: um Form Trigger do n8n que cria uma página web com um campo de upload de PDF.
+2. **Analisar com CV Shield**: um nó HTTP Request que envia o PDF para `POST http://127.0.0.1:8000/analyze` e recebe o relatório.
 
-## How to use it
+## Como usar
 
-1. Start the API (see the Quick start in the main README) and n8n.
-2. In n8n, open the workflow menu, choose **Import from file...** and select `n8n/cv-shield-analyze-resume.json`.
-3. Click **Execute workflow**, upload a PDF in the form that opens, and check the output of the HTTP Request node.
+1. Inicie a API (veja o Início Rápido no README principal) e o n8n.
+2. No n8n, abra o menu do workflow, escolha **Import from file...** e selecione `n8n/cv-shield-analyze-resume.json`.
+3. Clique em **Execute workflow**, envie um PDF no formulário que abrir e confira a saída do nó HTTP Request.
 
-## Details worth knowing
+## Detalhes que vale saber
 
-- n8n names the binary field after the form field label, replacing characters it does not accept. The label `Currículo` becomes `Curr_culo`, which is the value the HTTP Request node expects in **Input Data Field Name**. If you rename the form field, update that value as well.
-- n8n restricts which folders its file nodes can read, so reading a PDF from an arbitrary project folder fails with "Access to the file is not allowed". Using an upload form avoids this.
-- The exported JSON does not contain credentials or API keys. The Groq key lives only in the API's `.env` file; n8n never sees it.
+- O n8n nomeia o campo binário com o rótulo do campo do formulário, trocando os caracteres que ele não aceita. O rótulo `Currículo` vira `Curr_culo`, que é o valor que o nó HTTP Request espera em **Input Data Field Name**. Se você renomear o campo do formulário, atualize esse valor também.
+- O n8n restringe quais pastas os nós de arquivo podem ler, então ler um PDF de uma pasta qualquer do projeto falha com "Access to the file is not allowed". Usar um formulário de upload evita isso.
+- O JSON exportado não contém credenciais nem chaves de API. A chave da Groq fica só no arquivo `.env` da API; o n8n nunca a vê.
