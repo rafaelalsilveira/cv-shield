@@ -4,6 +4,16 @@ CV Shield é uma ferramenta em Python que analisa currículos em PDF e detecta c
 
 O projeto foi criado como projeto de portfólio, com foco em Python, IA, automação e análise de documentos.
 
+## Demo
+
+O CV Shield analisa um currículo em PDF e devolve um relatório estruturado, com os achados dos detectores e uma avaliação de risco feita por IA. Abaixo, a resposta da API para um currículo fictício com texto oculto (fonte minúscula e cor quase branca):
+
+![Resposta da API do CV Shield para um currículo com texto oculto](docs/images/api-demo.png)
+
+O mesmo fluxo, automatizado no n8n: um formulário de upload recebe o PDF e o envia para a API.
+
+![Workflow do CV Shield no n8n](docs/images/n8n-workflow.png)
+
 ## O Problema
 
 Como os processos seletivos usam cada vez mais IA para analisar currículos, um documento pode conter instruções ocultas ou manipulativas, feitas para influenciar sistemas automatizados.
