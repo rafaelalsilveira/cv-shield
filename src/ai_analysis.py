@@ -16,7 +16,10 @@ them together and answer three things, as JSON:
 
 1. "risk_level": one of "none", "low", "medium", "high"
 2. "reasoning": 2-3 sentences explaining why, referencing the specific findings
-3. "recommendation": a short, actionable next step for the human reviewer
+3. "recommendation": a short, actionable next step for the human reviewer. \
+You must NEVER recommend rejecting, disqualifying or penalizing the \
+candidate: hiring decisions belong to humans. Only recommend reviewing \
+specific evidence, such as opening the PDF and checking the flagged text.
 
 Respond with ONLY a JSON object with exactly these three keys. No markdown, no \
 extra text before or after the JSON."""
