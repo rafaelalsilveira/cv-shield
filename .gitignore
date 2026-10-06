@@ -21,3 +21,4 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+experiments/validation_results.csv
