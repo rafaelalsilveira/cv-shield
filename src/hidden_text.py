@@ -16,6 +16,12 @@ MIN_CONTRAST_RATIO = 3.0
 AVG_CHAR_WIDTH_EM = 0.5
 TEXT_HEIGHT_EM = 0.7
 
+# Limites da lista de trechos de cada achado no relatório: quantos trechos
+# aparecem e quantos caracteres de cada um. Um PDF malicioso pode ter
+# milhares de trechos; sem limite o relatório (e o pedido à IA) explodiria.
+MAX_LISTED_FRAGMENTS = 20
+MAX_LISTED_TEXT_LENGTH = 200
+
 # Operadores PDF que preenchem o caminho atual.
 FILL_OPERATORS = {b"f", b"F", b"f*", b"B", b"B*", b"b", b"b*"}
 
@@ -204,7 +210,12 @@ HIDDEN_TEXT_CHECKS = {
 
 def find_hidden_text(fragments):
     """Agrupa os achados por (página, motivo) para o relatório não ficar
-    com uma linha para cada trecho do mesmo bloco escondido."""
+    com uma linha para cada trecho do mesmo bloco escondido.
+
+    Cada grupo traz "fragment_count" (quantos trechos caíram nele) e
+    "fragments" (o texto e a posição de cada um, para o revisor conferir
+    um por um). A lista é limitada para o relatório não crescer sem fim,
+    mas "fragment_count" sempre mostra o total real."""
     grouped = {}
 
     for fragment in fragments:
@@ -218,7 +229,17 @@ def find_hidden_text(fragments):
                         "page": fragment["page"],
                         "fragment_count": 0,
                         "text_preview": fragment["text"][:60],
+                        "fragments": [],
                     }
-                grouped[key]["fragment_count"] += 1
+                group = grouped[key]
+                group["fragment_count"] += 1
+                if len(group["fragments"]) < MAX_LISTED_FRAGMENTS:
+                    group["fragments"].append(
+                        {
+                            "text": fragment["text"][:MAX_LISTED_TEXT_LENGTH],
+                            "x": round(fragment["x"], 1),
+                            "y": round(fragment["y"], 1),
+                        }
+                    )
 
     return list(grouped.values())

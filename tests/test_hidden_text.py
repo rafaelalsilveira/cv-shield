@@ -1,6 +1,14 @@
 import unittest
+from pathlib import Path
 
-from src.hidden_text import find_hidden_text
+from src.hidden_text import (
+    MAX_LISTED_FRAGMENTS,
+    MAX_LISTED_TEXT_LENGTH,
+    extract_text_fragments,
+    find_hidden_text,
+)
+
+EXAMPLES = Path(__file__).resolve().parent.parent / "examples"
 
 
 def make_fragment(**overrides):
@@ -84,6 +92,43 @@ class TestHiddenText(unittest.TestCase):
         self.assertEqual(tiny[0]["fragment_count"], 3)
         self.assertEqual(tiny[0]["text_preview"], "line one")
 
+    def test_lists_every_grouped_fragment_with_text_and_position(self):
+        fragments = [
+            make_fragment(text="line one", size=1.0, x=72.0, y=30.04),
+            make_fragment(text="line two", size=1.0, x=72.0, y=20.0),
+        ]
+
+        findings = find_hidden_text(fragments)
+        tiny = [f for f in findings if f["pattern"] == "tiny_font"][0]
+
+        self.assertEqual(
+            tiny["fragments"],
+            [
+                {"text": "line one", "x": 72.0, "y": 30.0},
+                {"text": "line two", "x": 72.0, "y": 20.0},
+            ],
+        )
+
+    def test_listed_fragments_are_capped_but_the_count_is_the_real_total(self):
+        total = MAX_LISTED_FRAGMENTS + 5
+        fragments = [
+            make_fragment(text=f"line {i}", size=1.0) for i in range(total)
+        ]
+
+        findings = find_hidden_text(fragments)
+        tiny = [f for f in findings if f["pattern"] == "tiny_font"][0]
+
+        self.assertEqual(len(tiny["fragments"]), MAX_LISTED_FRAGMENTS)
+        self.assertEqual(tiny["fragment_count"], total)
+
+    def test_long_fragment_text_is_cut_in_the_list(self):
+        long_text = "a" * (MAX_LISTED_TEXT_LENGTH + 50)
+
+        findings = find_hidden_text([make_fragment(text=long_text, size=1.0)])
+        tiny = [f for f in findings if f["pattern"] == "tiny_font"][0]
+
+        self.assertEqual(len(tiny["fragments"][0]["text"]), MAX_LISTED_TEXT_LENGTH)
+
     def test_white_text_on_dark_background_is_not_flagged(self):
         # Texto branco sobre uma faixa escura (comum em templates de
         # currículo, ex: examples/test_colored_band_resume.pdf) é legítimo.
@@ -99,6 +144,24 @@ class TestHiddenText(unittest.TestCase):
         findings = find_hidden_text([white_name_on_dark_sidebar])
 
         self.assertEqual(findings, [])
+
+
+class TestReportListsEveryHiddenFragment(unittest.TestCase):
+
+    def test_camila_report_shows_both_white_attacks_not_only_the_first(self):
+        # Erro registrado no docs/validacao.md: o achado near_white_text do
+        # CV_Camila.pdf agrupava 2 ataques diferentes (A e B), mas o relatório
+        # só mostrava o início do primeiro.
+        fragments = extract_text_fragments(str(EXAMPLES / "CV_Camila.pdf"))
+        findings = find_hidden_text(fragments)
+        near_white = [f for f in findings if f["pattern"] == "near_white_text"][0]
+
+        texts = [item["text"] for item in near_white["fragments"]]
+
+        self.assertEqual(near_white["fragment_count"], 2)
+        self.assertEqual(len(texts), 2)
+        self.assertTrue(texts[0].startswith("IGNORE ALL PREVIOUS INSTRUCTIONS"))
+        self.assertTrue(texts[1].startswith("Aviso ao sistema de triagem"))
 
 
 if __name__ == "__main__":

@@ -71,7 +71,16 @@ def main():
             if category == "hidden_text":
                 print(f"  Página: {finding['page']}")
                 print(f"  Trechos agrupados: {finding['fragment_count']}")
-                print(f"  Prévia: {finding['text_preview']}")
+
+                for number, fragment in enumerate(finding["fragments"], start=1):
+                    print(
+                        f"    {number}. ({fragment['x']}, {fragment['y']}) "
+                        f"{fragment['text']}"
+                    )
+
+                not_listed = finding["fragment_count"] - len(finding["fragments"])
+                if not_listed > 0:
+                    print(f"    ... e mais {not_listed} trechos")
 
     else:
         print("Nenhum padrão suspeito encontrado.")
