@@ -6,20 +6,111 @@ MIN_VISIBLE_FONT_SIZE = 3.0
 # Cada canal RGB igual ou acima disso é considerado "quase branco".
 NEAR_WHITE_THRESHOLD = 0.95
 
+# Contraste mínimo (WCAG, texto grande) entre o texto claro e o fundo para
+# considerar que um humano consegue ler. Abaixo disso, o texto é suspeito.
+MIN_CONTRAST_RATIO = 3.0
+
+# Estimativa da caixa do texto, usada para checar se ele cabe inteiro dentro
+# de um retângulo colorido: largura média de um caractere e altura visível,
+# ambas como fração do tamanho da fonte.
+AVG_CHAR_WIDTH_EM = 0.5
+TEXT_HEIGHT_EM = 0.7
+
+# Operadores PDF que preenchem o caminho atual.
+FILL_OPERATORS = {b"f", b"F", b"f*", b"B", b"B*", b"b", b"b*"}
+
+# Operadores PDF que terminam o caminho sem preencher.
+PATH_END_OPERATORS = {b"n", b"S", b"s"}
+
+
+def color_to_rgb(color):
+    """Converte a cor guardada (RGB, cinza ou CMYK) em uma tupla RGB."""
+    if color is None:
+        return None
+    if color[0] == "cmyk":
+        c, m, y, k = color[1:]
+        return ((1 - c) * (1 - k), (1 - m) * (1 - k), (1 - y) * (1 - k))
+    return tuple(color)
+
+
+def _linearize(channel):
+    channel = min(max(channel, 0.0), 1.0)
+    if channel <= 0.03928:
+        return channel / 12.92
+    return ((channel + 0.055) / 1.055) ** 2.4
+
+
+def relative_luminance(rgb):
+    r, g, b = (_linearize(value) for value in rgb)
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def contrast_ratio(rgb_a, rgb_b):
+    """Razão de contraste WCAG entre duas cores RGB (1 a 21)."""
+    lum_a = relative_luminance(rgb_a)
+    lum_b = relative_luminance(rgb_b)
+    lighter, darker = max(lum_a, lum_b), min(lum_a, lum_b)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def _rect_bounds(operands, cm):
+    """Retângulo do operador "re" no espaço da página: (esquerda, baixo,
+    direita, topo). Aplica a matriz atual aos 4 cantos e normaliza altura
+    ou largura negativas."""
+    x, y, w, h = (float(v) for v in operands)
+    a, b, c, d, e, f = (float(v) for v in cm)
+    corners = [(x, y), (x + w, y), (x, y + h), (x + w, y + h)]
+    xs = [cx * a + cy * c + e for cx, cy in corners]
+    ys = [cx * b + cy * d + f for cx, cy in corners]
+    return (min(xs), min(ys), max(xs), max(ys))
+
+
+def find_background(rects, x, y, text, font_size):
+    """Cor de fundo (RGB) atrás do texto, ou None se não for conhecida.
+
+    "rects" são os retângulos preenchidos ATÉ este ponto do PDF, em ordem de
+    desenho. Um retângulo desenhado depois do texto o cobriria, não serviria
+    de fundo, então só os anteriores contam. Vale o mais recente (o que está
+    por cima) que contém o início do texto, e só se a caixa estimada do texto
+    couber inteira nele: um retângulo minúsculo escondido no começo do texto
+    não pode servir de fundo para o texto todo.
+    """
+    size = font_size if font_size and font_size > 0 else 0.0
+    box_right = x + len(text) * size * AVG_CHAR_WIDTH_EM
+    box_top = y + size * TEXT_HEIGHT_EM
+
+    for left, bottom, right, top, rgb in reversed(rects):
+        if left <= x <= right and bottom <= y <= top:
+            if box_right <= right and box_top <= top:
+                return rgb
+            return None
+    return None
+
 
 def extract_text_fragments(pdf_path):
-    """Extrai cada trecho de texto do PDF com tamanho, cor e posição."""
+    """Extrai cada trecho de texto do PDF com tamanho, cor, posição e a cor
+    do fundo colorido atrás dele (quando houver)."""
     reader = PdfReader(pdf_path)
     fragments = []
 
     for page_number, page in enumerate(reader.pages, start=1):
         page_width = float(page.mediabox.width)
         page_height = float(page.mediabox.height)
-        state = {"fill_color": None}
+        state = {
+            "fill_color": None,
+            "color_stack": [],
+            "path_rects": [],
+            "filled_rects": [],
+        }
 
         def visitor_operand_before(operator, operands, cm, tm):
             # Guarda a última cor de preenchimento definida antes do texto.
-            if operator == b"rg":
+            if operator == b"q":
+                state["color_stack"].append(state["fill_color"])
+            elif operator == b"Q":
+                if state["color_stack"]:
+                    state["fill_color"] = state["color_stack"].pop()
+            elif operator == b"rg":
                 state["fill_color"] = tuple(round(float(v), 3) for v in operands)
             elif operator == b"g":
                 gray = round(float(operands[0]), 3)
@@ -28,6 +119,17 @@ def extract_text_fragments(pdf_path):
                 state["fill_color"] = ("cmyk",) + tuple(
                     round(float(v), 3) for v in operands
                 )
+            # Registra os retângulos preenchidos (faixas e blocos coloridos).
+            elif operator == b"re" and len(operands) == 4:
+                state["path_rects"].append(_rect_bounds(operands, cm))
+            elif operator in FILL_OPERATORS:
+                # Sem cor definida, o PDF preenche com preto.
+                rgb = color_to_rgb(state["fill_color"]) or (0.0, 0.0, 0.0)
+                for bounds in state["path_rects"]:
+                    state["filled_rects"].append(bounds + (rgb,))
+                state["path_rects"] = []
+            elif operator in PATH_END_OPERATORS:
+                state["path_rects"] = []
 
         def visitor_text(text, cm, tm, font_dict, font_size):
             if not text.strip():
@@ -40,6 +142,9 @@ def extract_text_fragments(pdf_path):
                     "text": text.strip(),
                     "size": font_size,
                     "color": state["fill_color"],
+                    "background": find_background(
+                        state["filled_rects"], x, y, text.strip(), font_size
+                    ),
                     "x": x,
                     "y": y,
                     "page_width": page_width,
@@ -64,9 +169,21 @@ def is_near_white(fragment):
     color = fragment.get("color")
     if color is None:
         return False  # Nenhuma cor definida: o PDF usa preto por padrão.
+
     if color[0] == "cmyk":
-        return all(value <= 1 - NEAR_WHITE_THRESHOLD for value in color[1:])
-    return all(value >= NEAR_WHITE_THRESHOLD for value in color)
+        looks_white = all(value <= 1 - NEAR_WHITE_THRESHOLD for value in color[1:])
+    else:
+        looks_white = all(value >= NEAR_WHITE_THRESHOLD for value in color)
+    if not looks_white:
+        return False
+
+    # Texto claro sobre um fundo escuro conhecido (faixa de template) é
+    # legível. Sem fundo conhecido, vale a regra antiga: suspeito.
+    background = fragment.get("background")
+    if background is not None:
+        if contrast_ratio(color_to_rgb(color), background) >= MIN_CONTRAST_RATIO:
+            return False
+    return True
 
 
 def is_off_page(fragment):

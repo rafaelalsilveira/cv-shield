@@ -84,20 +84,16 @@ class TestHiddenText(unittest.TestCase):
         self.assertEqual(tiny[0]["fragment_count"], 3)
         self.assertEqual(tiny[0]["text_preview"], "line one")
 
-    @unittest.expectedFailure
-    def test_white_text_on_colored_background_is_a_known_false_positive(self):
-        # Limitação conhecida: o detector só olha a cor do TEXTO, não a cor
-        # do fundo atrás dele. Texto branco sobre uma faixa lateral escura
-        # (comum em templates de currículo, ex: examples/test_colored_band_resume.pdf)
-        # é legítimo e legível, mas hoje é marcado como suspeito do mesmo jeito
-        # que texto branco escondido sobre fundo branco.
-        #
-        # Esse teste está marcado como @expectedFailure de propósito: ele
-        # documenta o comportamento atual (incorreto) sem quebrar a suíte.
-        # Checar a cor do fundo exigiria rastrear retângulos/preenchimentos
-        # desenhados atrás do texto, o que fica para uma versão futura.
+    def test_white_text_on_dark_background_is_not_flagged(self):
+        # Texto branco sobre uma faixa escura (comum em templates de
+        # currículo, ex: examples/test_colored_band_resume.pdf) é legítimo.
+        # O detector registra os retângulos coloridos da página e traz a cor
+        # do fundo no fragmento. Os testes de contraste mais completos estão
+        # em test_background_contrast.py.
         white_name_on_dark_sidebar = make_fragment(
-            text="Camila Dias", color=(1.0, 1.0, 1.0)
+            text="Camila Dias",
+            color=(1.0, 1.0, 1.0),
+            background=(0.12, 0.23, 0.37),
         )
 
         findings = find_hidden_text([white_name_on_dark_sidebar])
