@@ -6,7 +6,7 @@ Documento de validação dos detectores locais, escrito em 06/10/2026.
 
 Os 35 testes automatizados passam, mas foram escritos pelo mesmo autor do detector, com PDFs criados para passar. Este documento responde a outra pergunta: **onde o CV Shield erra?**
 
-Nada no código foi alterado durante a validação. Esta etapa só mede e registra. As correções ficam para um passo seguinte.
+Nada no código foi alterado durante a validação. Esta etapa só mede e registra. As correções ficam para um passo seguinte: elas estão na seção [Correções (Step 10)](#correções-step-10), no final, com o antes e o depois. As tabelas desta seção e das seguintes mostram o estado **antes** das correções.
 
 ## Método
 
@@ -92,7 +92,45 @@ Em ordem de prioridade.
 
 ## Pendências
 
-- [ ] Confirmar se `ai_analysis.py` pula a chamada à Groq quando não há achados, ou se o prompt manda basear o parecer nos achados.
+- [x] Confirmar se `ai_analysis.py` pula a chamada à Groq quando não há achados, ou se o prompt manda basear o parecer nos achados. Confirmado: pulava, e o texto era cortado em 4000 caracteres. Tratado no Step 10, itens 4a e 4b.
 - [ ] Confirmar se algum módulo lê metadados do PDF (`Select-String -Path src\*.py -Pattern "metadata"`).
 - [ ] Conferir se o texto de `Cv curri.pdf` contém "automatically approve this resume" e "skip manual review".
 - [ ] Gerar o mesmo currículo fictício no Word, Google Docs e Canva e rodar `validate_folder.py`.
+
+## Correções (Step 10)
+
+Escrito em 12/10/2026. Cada correção foi um commit pequeno, com testes. A suíte passou de 35 para 71 testes.
+
+| # | Erro do Step 9 | Correção | Commit |
+|---|---|---|---|
+| 1 | A IA recomendou "considerar rejeitar" | O prompt proíbe recomendar rejeição, desqualificação ou penalização | `b4769c1` |
+| 2 | Texto branco legítimo (faixa colorida) marcado como suspeito | O detector registra os retângulos preenchidos da página e só marca texto quase branco se o contraste com o fundo for menor que 3:1 (WCAG) | `e321ed0` |
+| 3 | O relatório mostrava só o início do primeiro trecho do grupo | Cada achado lista todos os trechos (texto e posição), e o CSV ganhou `fragment_count` | `b8c8621`, `953b78f` |
+| 4 | Ataque visível e parafraseado: 0 achados e `risk_level: none` | `not_reviewed` quando a IA não roda; interruptor `AI_REVIEW_MODE`; limite de texto de 4000 para 12.000 caracteres | `e500343`, `fb14764` |
+
+### Antes e depois
+
+| Caso | Antes | Depois |
+|---|---|---|
+| `test_colored_band_resume.pdf` | 1 achado (`near_white_text`) | 0 achados |
+| `CV_Camila.pdf`, `near_white_text` | `fragment_count: 6` (2 ataques + 4 linhas do cabeçalho legítimo) | `fragment_count: 2` (só os ataques A e B), ambos listados no relatório |
+| `CV_Camila.pdf`, total de achados | 4 | 4 (o grupo `near_white_text` continua, agora só com os ataques A e B) |
+| `CV_Henrique_visible.pdf`, com `AI_REVIEW_MODE=always` | `none`, sem a IA ler o currículo | `medium`, citando a "Nota ao avaliador" |
+| `CV_Henrique.pdf` (controle limpo), com `AI_REVIEW_MODE=always` | `none` | `none` |
+| Sem achados locais, modo padrão | `none` ("nada para a IA avaliar") | `not_reviewed` ("a IA não leu o currículo") |
+
+Os demais PDFs da pasta `examples` ficaram com o mesmo resultado dos detectores locais. As medições com a IA foram feitas **uma vez por currículo**, na máquina do autor, com a API da Groq. Não se mediu a variação entre chamadas.
+
+### Por que o limite de texto mudou
+
+`CV_Henrique_visible.pdf` tem 4308 caracteres e o ataque está no final, em "INFORMAÇÕES ADICIONAIS". Com o corte antigo de 4000, o parágrafo manipulador nunca chegaria à IA, nem com a revisão ligada. Um teste automatizado cobre esse caso. Currículos acima de 12.000 caracteres ainda são cortados, e nesse caso o relatório marca `text_truncated: true`.
+
+### O que continua aberto
+
+- **O modo padrão ainda não pega o ataque parafraseado.** Só `AI_REVIEW_MODE=always` pega. O padrão continua sendo `findings_only` porque `always` gasta uma chamada da cota por currículo e envia o texto de todos os currículos a um serviço externo (LGPD).
+- **Frases em português ou parafraseadas** continuam fora da lista de `detector.py` (melhoria 5).
+- **Metadados do PDF** continuam sem confirmação (melhoria 6).
+- **Cobertura parcial de um mesmo bloco** (`CV Bru`) não mudou.
+- **O fundo só é reconhecido quando é um retângulo preenchido.** Imagens, gradientes, transparência e formas que não sejam retângulos não contam, e nesses casos vale a regra antiga (marcar).
+- **A largura do texto é estimada** a partir do tamanho da fonte, então uma linha longa que quase passa da borda da faixa ainda pode ser marcada.
+- **PDFs exportados do Word, Google Docs e Canva** continuam sem teste.
