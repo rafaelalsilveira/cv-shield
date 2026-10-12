@@ -36,12 +36,18 @@ def build_user_message(extracted_text, findings):
 
 def analyze_with_ai(extracted_text, findings, client=None):
     if not findings:
+        # "not_reviewed" e não "none": sem achados a IA nem chega a ler o
+        # currículo, então não dá para afirmar que ele está limpo. Uma
+        # manipulação parafraseada, em texto visível, passa pelos detectores
+        # locais (docs/validacao.md, CV_Henrique_visible.pdf).
         return {
-            "risk_level": "none",
-            "reasoning": "No suspicious patterns or hidden text were detected "
-            "by the deterministic detectors, so there is nothing for the AI "
-            "reviewer to assess.",
-            "recommendation": "No action needed.",
+            "risk_level": "not_reviewed",
+            "reasoning": "The local detectors found no suspicious phrases or "
+            "hidden text. The AI reviewer did not run, so manipulation that "
+            "is visible and worded differently from the known phrases would "
+            "not be caught.",
+            "recommendation": "No local findings. This does not prove the "
+            "resume is clean: skim it if the decision matters.",
         }
 
     if client is None:

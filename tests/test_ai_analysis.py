@@ -26,7 +26,10 @@ class TestAiAnalysis(unittest.TestCase):
 
         result = analyze_with_ai("texto qualquer", [], client=client)
 
-        self.assertEqual(result["risk_level"], "none")
+        # Não pode ser "none": a IA não leu o currículo, então "limpo" seria
+        # uma afirmação sem base.
+        self.assertEqual(result["risk_level"], "not_reviewed")
+        self.assertIn("did not run", result["reasoning"])
         client.chat.completions.create.assert_not_called()
 
     def test_returns_parsed_assessment_on_valid_response(self):
