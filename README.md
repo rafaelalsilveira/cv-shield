@@ -34,7 +34,7 @@ O CV Shield analisa um currículo em PDF usando três camadas de detecção:
 
 1. **Detector de frases suspeitas**: extrai o texto e compara com uma lista de frases manipulativas conhecidas.
 2. **Detector de texto oculto**: inspeciona o tamanho da fonte, a cor e a posição de cada trecho de texto (não só o conteúdo) e sinaliza fontes menores que 3pt, texto quase branco (RGB e CMYK) e texto posicionado fora da área visível da página. Ele consegue pegar instruções ocultas mesmo quando elas evitam todas as frases conhecidas, porque olha para como o texto é renderizado, e não para o que ele diz.
-3. **Análise assistida por IA**: envia o texto e os achados dos dois detectores para um LLM (API gratuita da Groq), que devolve um nível de risco (`none`, `low`, `medium`, `high`), uma explicação curta e uma recomendação de próximo passo. Essa etapa é pulada quando não há achados, para evitar chamadas desnecessárias à API. Nesse caso o relatório devolve `not_reviewed` (a IA não leu o currículo), e não `none`, porque "sem achados locais" não prova que o currículo está limpo.
+3. **Análise assistida por IA**: envia o texto e os achados dos dois detectores para um LLM (API gratuita da Groq), que devolve um nível de risco (`none`, `low`, `medium`, `high`), uma explicação curta e uma recomendação de próximo passo. Por padrão (`AI_REVIEW_MODE=findings_only`) essa etapa é pulada quando não há achados, para economizar cota e não enviar o texto à toa. Nesse caso o relatório devolve `not_reviewed` (a IA não leu o currículo), e não `none`, porque "sem achados locais" não prova que o currículo está limpo. Com `AI_REVIEW_MODE=always`, a IA lê todo currículo, e assim consegue pegar manipulação parafraseada e em texto visível, que os detectores locais não veem. Se o currículo passar de 12.000 caracteres, a IA lê só o início e o relatório marca `text_truncated: true`.
 
 **Importante:** o CV Shield não toma decisões de contratação. Ele apenas aponta possíveis evidências para revisão humana.
 
@@ -102,7 +102,7 @@ A versão completa, com o contexto de cada problema, está em [docs/aprendizados
 
 ## Nota de Privacidade
 
-Quando os detectores encontram algo, o texto do currículo é enviado para a API da Groq para a avaliação da IA. Use currículos fictícios ou anonimizados, a menos que você aceite esse envio.
+No modo padrão (`findings_only`), o texto do currículo só é enviado para a API da Groq quando os detectores encontram algo. No modo `always`, o texto de **todo** currículo é enviado. Use currículos fictícios ou anonimizados, a menos que você aceite esse envio. Para currículos reais de terceiros, a LGPD se aplica: verifique a base legal e os termos do provedor antes de ligar o modo `always`.
 
 ## Tecnologias
 
