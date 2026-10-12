@@ -14,7 +14,15 @@ from src.hidden_text import extract_text_fragments, find_hidden_text
 
 sys.stdout.reconfigure(encoding="utf-8")
 
-CSV_FIELDS = ["file", "finding_count", "category", "pattern", "page", "text_preview"]
+CSV_FIELDS = [
+    "file",
+    "finding_count",
+    "category",
+    "pattern",
+    "page",
+    "fragment_count",
+    "text_preview",
+]
 
 
 def analyze_local(pdf_path):
@@ -54,6 +62,7 @@ def validate_folder(folder, csv_path):
                 "category": f["category"],
                 "pattern": f["pattern"],
                 "page": f.get("page", ""),
+                "fragment_count": f.get("fragment_count", ""),
                 "text_preview": f.get("text_preview", ""),
             })
 
