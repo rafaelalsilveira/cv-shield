@@ -3,9 +3,15 @@
 Reaproveita o analyze_pdf (src/main.py). Um PDF quebrado vira status "error"
 e não derruba os outros. Quem decide o que fazer com os sinalizados é uma
 pessoa: aqui só se separa o que está ok do que merece atenção.
+
+Uso: python -m src.batch minha_pasta
 """
+import argparse
+import sys
 from pathlib import Path
 
+from src.ai_analysis import get_review_mode
+from src.batch_report import save_html
 from src.main import analyze_pdf
 
 # Níveis de risco da IA que mandam o currículo para "attention", mesmo sem
@@ -67,9 +73,20 @@ def analyze_one(pdf_path):
     }
 
 
-def analyze_folder(folder):
-    """Analisa todos os PDFs da pasta e devolve resumo + uma linha por PDF."""
-    results = [analyze_one(pdf_path) for pdf_path in list_pdfs(folder)]
+def analyze_folder(folder, on_result=None):
+    """Analisa todos os PDFs da pasta e devolve resumo + uma linha por PDF.
+
+    on_result (opcional) é chamada a cada PDF terminado, como
+    on_result(posição, total, linha), para quem quiser mostrar o andamento.
+    """
+    pdfs = list_pdfs(folder)
+    results = []
+
+    for position, pdf_path in enumerate(pdfs, start=1):
+        row = analyze_one(pdf_path)
+        results.append(row)
+        if on_result is not None:
+            on_result(position, len(pdfs), row)
 
     summary = {
         "total": len(results),
@@ -79,3 +96,79 @@ def analyze_folder(folder):
     }
 
     return {"folder": str(folder), "summary": summary, "results": results}
+
+
+DEFAULT_OUTPUT = "relatorio_lote.html"
+
+PROGRESS_LABELS = {"ok": "ok", "attention": "ATENÇÃO", "error": "ERRO"}
+
+
+def print_progress(position, total, row):
+    """Uma linha por currículo terminado, para o terminal não parecer travado."""
+    label = PROGRESS_LABELS[row["status"]]
+    print(f"[{position}/{total}] {row['file']} ... {label}", flush=True)
+
+
+def parse_args(argv):
+    parser = argparse.ArgumentParser(
+        prog="python -m src.batch",
+        description="Analisa todos os PDFs de uma pasta e gera um relatório HTML.",
+    )
+    parser.add_argument("folder", help="pasta com os currículos em PDF")
+    parser.add_argument(
+        "-o",
+        "--output",
+        default=DEFAULT_OUTPUT,
+        help=f"arquivo HTML do relatório (padrão: {DEFAULT_OUTPUT})",
+    )
+    return parser.parse_args(argv)
+
+
+def describe_review_mode(mode):
+    if mode == "always":
+        return "always (a IA lê o texto de TODOS os currículos)"
+    return "findings_only (a IA só lê os currículos em que os detectores acharam algo)"
+
+
+def main(argv=None):
+    """Roda o lote pela linha de comando. Devolve 0 se deu certo, 1 se não deu."""
+    # Terminais do Windows nem sempre usam UTF-8; sem isso, acentos quebram.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+
+    args = parse_args(argv)
+
+    try:
+        pdfs = list_pdfs(args.folder)
+    except FileNotFoundError as exc:
+        print(f"Erro: {exc}", file=sys.stderr)
+        return 1
+
+    if not pdfs:
+        print(f"Nenhum PDF encontrado em {args.folder}. Nada a analisar.")
+        return 0
+
+    print(f"Analisando {len(pdfs)} PDF(s) de {args.folder}")
+    print(f"Modo da IA: {describe_review_mode(get_review_mode())}\n")
+
+    batch = analyze_folder(args.folder, on_result=print_progress)
+    save_html(batch, args.output)
+
+    summary = batch["summary"]
+    print(f"\n{summary['total']} analisados, {summary['attention']} sinalizados", end="")
+    print(f", {summary['error']} com erro" if summary["error"] else "")
+
+    for row in batch["results"]:
+        if row["status"] == "attention":
+            print(f"  ATENÇÃO  {row['file']}")
+        elif row["status"] == "error":
+            print(f"  ERRO     {row['file']}: {row['error']}")
+
+    print(f"\nRelatório salvo em: {args.output}")
+    print("Esta ferramenta só aponta sinais: a decisão sobre cada currículo é humana.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

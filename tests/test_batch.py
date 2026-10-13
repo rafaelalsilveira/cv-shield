@@ -1,3 +1,5 @@
+import contextlib
+import io
 import os
 import shutil
 import tempfile
@@ -5,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from src.batch import analyze_folder, classify_report, list_pdfs
+from src.batch import analyze_folder, classify_report, list_pdfs, main
 
 EXAMPLES_DIR = os.path.join(os.path.dirname(__file__), "..", "examples")
 
@@ -165,6 +167,112 @@ class TestAnalyzeFolder(unittest.TestCase):
 
         self.assertEqual(batch["summary"]["error"], 2)
         self.assertEqual(batch["results"][0]["error"], "RuntimeError: boom")
+
+
+    def test_on_result_is_called_once_per_pdf_in_order(self):
+        Path(self.folder, "b.pdf").write_bytes(b"x")
+        Path(self.folder, "a.pdf").write_bytes(b"x")
+        calls = []
+
+        with patch("src.batch.analyze_pdf", side_effect=RuntimeError("boom")):
+            analyze_folder(
+                self.folder,
+                on_result=lambda pos, total, row: calls.append(
+                    (pos, total, row["file"], row["status"])
+                ),
+            )
+
+        self.assertEqual(
+            calls, [(1, 2, "a.pdf", "error"), (2, 2, "b.pdf", "error")]
+        )
+
+
+class TestMain(unittest.TestCase):
+    """O comando python -m src.batch, sem rede e sem chamar a Groq."""
+
+    def setUp(self):
+        self.folder = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.folder)
+        self.output = os.path.join(self.folder, "saida", "relatorio.html")
+        os.makedirs(os.path.dirname(self.output))
+        # Os PDFs ficam numa subpasta separada da saída do relatório.
+        self.pdfs = os.path.join(self.folder, "pdfs")
+        os.makedirs(self.pdfs)
+
+    def copy_example(self, filename):
+        shutil.copy(os.path.join(EXAMPLES_DIR, filename), self.pdfs)
+
+    def run_main(self, *args):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = main(list(args))
+        return code, out.getvalue(), err.getvalue()
+
+    @patch(
+        "src.main.analyze_with_ai",
+        side_effect=lambda text, findings: HIGH_ASSESSMENT if findings else CLEAN_ASSESSMENT,
+    )
+    def test_writes_report_and_prints_summary(self, fake_ai):
+        self.copy_example("sample_resume.pdf")
+        self.copy_example("CV Ra.pdf")
+
+        code, out, _ = self.run_main(self.pdfs, "-o", self.output)
+
+        self.assertEqual(code, 0)
+        self.assertIn("2 analisados, 1 sinalizados", out)
+        self.assertIn("[1/2]", out)
+        self.assertIn("[2/2]", out)
+        self.assertIn("ATENÇÃO  CV Ra.pdf", out)
+        self.assertIn(self.output, out)
+        with open(self.output, encoding="utf-8") as html_file:
+            html = html_file.read()
+        self.assertIn("CV Ra.pdf", html)
+        self.assertIn("Texto escondido no PDF", html)
+
+    def test_broken_pdf_is_listed_as_error_and_exit_code_is_still_zero(self):
+        Path(self.pdfs, "quebrado.pdf").write_bytes(b"%PDF-1.4 conteudo quebrado")
+
+        code, out, _ = self.run_main(self.pdfs, "-o", self.output)
+
+        self.assertEqual(code, 0)
+        self.assertIn("1 com erro", out)
+        self.assertIn("ERRO     quebrado.pdf", out)
+        self.assertTrue(os.path.exists(self.output))
+
+    def test_missing_folder_prints_a_clear_message_and_returns_1(self):
+        code, out, err = self.run_main(
+            os.path.join(self.folder, "nao_existe"), "-o", self.output
+        )
+
+        self.assertEqual(code, 1)
+        self.assertIn("Folder not found", err)
+        self.assertNotIn("Traceback", err)
+        self.assertFalse(os.path.exists(self.output))
+
+    def test_folder_without_pdfs_says_so_and_writes_nothing(self):
+        code, out, _ = self.run_main(self.pdfs, "-o", self.output)
+
+        self.assertEqual(code, 0)
+        self.assertIn("Nenhum PDF encontrado", out)
+        self.assertFalse(os.path.exists(self.output))
+
+    @patch("src.main.analyze_with_ai", return_value=CLEAN_ASSESSMENT)
+    def test_prints_which_ai_mode_is_active(self, fake_ai):
+        self.copy_example("sample_resume.pdf")
+
+        with patch.dict(os.environ, {"AI_REVIEW_MODE": "always"}):
+            _, out, _ = self.run_main(self.pdfs, "-o", self.output)
+        self.assertIn("TODOS os currículos", out)
+
+        with patch.dict(os.environ):
+            os.environ.pop("AI_REVIEW_MODE", None)
+            _, out, _ = self.run_main(self.pdfs, "-o", self.output)
+        self.assertIn("findings_only", out)
+
+    def test_default_output_name_is_relatorio_lote_html(self):
+        from src.batch import DEFAULT_OUTPUT
+
+        self.assertEqual(DEFAULT_OUTPUT, "relatorio_lote.html")
 
 
 if __name__ == "__main__":

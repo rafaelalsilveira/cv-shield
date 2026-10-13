@@ -22,3 +22,6 @@ build/
 .DS_Store
 Thumbs.db
 experiments/validation_results.csv
+
+# Relatorios do lote (contem trechos de curriculos)
+relatorio_lote*.html
