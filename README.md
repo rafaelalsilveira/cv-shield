@@ -34,7 +34,7 @@ O CV Shield analisa um currículo em PDF usando três camadas de detecção:
 
 1. **Detector de frases suspeitas**: extrai o texto e compara com uma lista de frases manipulativas conhecidas.
 2. **Detector de texto oculto**: inspeciona o tamanho da fonte, a cor e a posição de cada trecho de texto (não só o conteúdo) e sinaliza fontes menores que 3pt, texto quase branco (RGB e CMYK) e texto posicionado fora da área visível da página. Ele consegue pegar instruções ocultas mesmo quando elas evitam todas as frases conhecidas, porque olha para como o texto é renderizado, e não para o que ele diz.
-3. **Análise assistida por IA**: envia o texto e os achados dos dois detectores para um LLM (API gratuita da Groq), que devolve um nível de risco (`none`, `low`, `medium`, `high`), uma explicação curta e uma recomendação de próximo passo. Por padrão (`AI_REVIEW_MODE=findings_only`) essa etapa é pulada quando não há achados, para economizar cota e não enviar o texto à toa. Nesse caso o relatório devolve `not_reviewed` (a IA não leu o currículo), e não `none`, porque "sem achados locais" não prova que o currículo está limpo. Com `AI_REVIEW_MODE=always`, a IA lê todo currículo, e assim consegue pegar manipulação parafraseada e em texto visível, que os detectores locais não veem. Se o currículo passar de 12.000 caracteres, a IA lê só o início e o relatório marca `text_truncated: true`.
+3. **Análise assistida por IA**: envia o texto e os achados dos dois detectores para um LLM (API gratuita da Groq), que devolve um nível de risco (`none`, `low`, `medium`, `high`), uma explicação curta, uma recomendação de próximo passo e a frase exata do currículo que parece dirigida a um avaliador automático (`suspicious_text`). O código confere se essa frase existe mesmo no texto do PDF (`suspicious_text_found`), porque a IA pode errar e citar o que não está lá. Por padrão (`AI_REVIEW_MODE=findings_only`) essa etapa é pulada quando não há achados, para economizar cota e não enviar o texto à toa. Nesse caso o relatório devolve `not_reviewed` (a IA não leu o currículo), e não `none`, porque "sem achados locais" não prova que o currículo está limpo. Com `AI_REVIEW_MODE=always`, a IA lê todo currículo, e assim consegue pegar manipulação parafraseada e em texto visível, que os detectores locais não veem. Se o currículo passar de 12.000 caracteres, a IA lê só o início e o relatório marca `text_truncated: true`.
 
 **Importante:** o CV Shield não toma decisões de contratação. Ele apenas aponta possíveis evidências para revisão humana.
 
@@ -51,7 +51,7 @@ flowchart LR
     F --> G[Relatório JSON]
 ```
 
-O script de linha de comando e a API usam a mesma função (`analyze_pdf` em `src/main.py`), então a lógica de análise existe em um único lugar.
+O script de linha de comando, a API e o lote de currículos usam a mesma função (`analyze_pdf` em `src/main.py`), então a lógica de análise existe em um único lugar.
 
 ## Início Rápido
 
@@ -62,6 +62,28 @@ python -m uvicorn src.api:app --reload
 ```
 
 Depois, defina a `GROQ_API_KEY` no arquivo `.env` (ele é ignorado pelo Git e nunca deve ser commitado) e abra `http://127.0.0.1:8000/docs` para testar a API pelo navegador.
+
+## Analisar uma Pasta de Currículos (Lote)
+
+Para analisar vários PDFs de uma vez, coloque-os em uma pasta e rode:
+
+```powershell
+python -m src.batch minha_pasta
+```
+
+O comando mostra o andamento de cada currículo, um resumo (por exemplo, "10 analisados, 6 sinalizados") e grava um relatório HTML (`relatorio_lote.html`, ou o nome dado com `-o arquivo.html`) que abre direto no navegador. O relatório traz uma tabela com todos os currículos (ok, atenção ou erro) e, para cada sinalizado, o texto escondido encontrado (com página e motivo), a frase suspeita apontada pela IA e o parecer completo. Um PDF quebrado vira "erro" na lista e não interrompe os outros.
+
+- Um currículo é marcado como **atenção** quando os detectores acham algo ou quando a IA dá risco `low`, `medium` ou `high`. **ok** não prova que o currículo está limpo: no modo padrão, a IA não leu os currículos sem achados.
+- Para a IA ler todos os currículos (e pegar ataques visíveis e parafraseados), rode com `AI_REVIEW_MODE=always`. Isso gasta mais da cota gratuita e envia o texto de todos para a Groq:
+
+```powershell
+$env:AI_REVIEW_MODE = "always"
+python -m src.batch minha_pasta
+Remove-Item Env:AI_REVIEW_MODE
+```
+
+- O relatório contém trechos dos currículos, então o `.gitignore` ignora arquivos `relatorio_*.html`. Não os envie para o GitHub.
+- Na amostra de `examples/`, o modo padrão sinalizou 5 de 10 currículos, e o modo `always` sinalizou 6, incluindo o ataque visível e parafraseado. É uma amostra pequena, não uma garantia.
 
 ## API
 
@@ -78,13 +100,13 @@ Um workflow do n8n exportado (`n8n/cv-shield-analyze-resume.json`) oferece um fo
 
 ## Testes
 
-A suíte tem 35 testes (um deles é uma falha esperada documentada). A integração com a IA e os endpoints da API são testados com mocks, então a suíte nunca depende de rede nem da cota da API.
+A suíte tem 124 testes. A integração com a IA, os endpoints da API e o lote de currículos são testados com mocks, então a suíte nunca depende de rede nem da cota da API.
 
 ```powershell
 python -m unittest discover -s tests
 ```
 
-Os testes usam currículos fictícios que cobrem sobrescrita de instruções, manipulação de contratação, padrões divididos em várias linhas, texto oculto (minúsculo, quase branco e fora da página), uma tentativa parafraseada que só o detector estrutural pega e um currículo legítimo com texto branco sobre uma faixa colorida (um falso positivo conhecido, descrito abaixo).
+Os testes usam currículos fictícios que cobrem sobrescrita de instruções, manipulação de contratação, padrões divididos em várias linhas, texto oculto (minúsculo, quase branco e fora da página), uma tentativa parafraseada que só o detector estrutural pega e um currículo legítimo com texto branco sobre uma faixa colorida (um falso positivo antigo, corrigido na Etapa 10 e descrito abaixo).
 
 ## Limitações Conhecidas e Aprendizados
 
@@ -92,7 +114,10 @@ Os principais pontos encontrados durante o desenvolvimento:
 
 - **Quebras de linha do `pypdf`**: o `pypdf` quebra linhas onde o PDF quebra visualmente, o que fazia frases suspeitas passarem despercebidas. Corrigido normalizando os espaços antes da comparação.
 - **Frases parafraseadas**: o detector de frases só acha o que está na lista fixa. Um segundo detector, estrutural (tamanho, cor e posição), pega instruções ocultas mesmo sem nenhuma palavra-chave.
-- **Falso positivo com fundo colorido (limitação aberta)**: o detector estrutural assume fundo branco, então texto branco sobre uma faixa colorida legítima é sinalizado. Está documentado em um teste `@expectedFailure`.
+- **Falso positivo com fundo colorido (corrigido, com limite)**: texto quase branco sobre uma faixa colorida legítima era sinalizado. Agora o detector compara o contraste do texto com o fundo e só marca quando ele é menor que 3:1 (WCAG). Só retângulos preenchidos contam como fundo; fundos em imagem ou em degradê ainda não são reconhecidos.
+- **Ataque visível e parafraseado**: sem frases conhecidas nem texto escondido, nenhum detector local o vê. Só a IA lendo todo currículo (`AI_REVIEW_MODE=always`) o pega, e o modo padrão avisa `not_reviewed` em vez de `none`.
+- **Frases em português**: a lista de frases suspeitas do `detector.py` ainda é só em inglês.
+- **Resposta da IA cortada**: o modelo gasta parte do limite de tokens "pensando", e com um limite curto a resposta saía cortada e virava `unknown`. O limite subiu para 2000 tokens e um corte passa a ser avisado no parecer.
 - **Versões do `pypdf`**: as versões 5.9.0 e 6.19.0 reportavam posições diferentes para o mesmo PDF. A versão está fixada no `requirements.txt`.
 - **Groq no lugar da Anthropic**: a API da Anthropic exige plano pago, então usamos o plano gratuito da Groq, e o nome do modelo é confirmado com `client.models.list()`.
 - **Dependências que faltavam**: o `requirements.txt` listava só o `pypdf`, e um clone novo falharia na importação. Corrigido com todas as dependências fixadas.
@@ -102,7 +127,7 @@ A versão completa, com o contexto de cada problema, está em [docs/aprendizados
 
 ## Nota de Privacidade
 
-No modo padrão (`findings_only`), o texto do currículo só é enviado para a API da Groq quando os detectores encontram algo. No modo `always`, o texto de **todo** currículo é enviado. Use currículos fictícios ou anonimizados, a menos que você aceite esse envio. Para currículos reais de terceiros, a LGPD se aplica: verifique a base legal e os termos do provedor antes de ligar o modo `always`.
+No modo padrão (`findings_only`), o texto do currículo só é enviado para a API da Groq quando os detectores encontram algo. No modo `always`, o texto de **todo** currículo é enviado. O relatório HTML do lote guarda trechos dos currículos e fica só no seu computador (o Git o ignora), mas não o compartilhe se os currículos forem reais. Use currículos fictícios ou anonimizados, a menos que você aceite esse envio. Para currículos reais de terceiros, a LGPD se aplica: verifique a base legal e os termos do provedor antes de ligar o modo `always`.
 
 ## Tecnologias
 
@@ -124,7 +149,9 @@ No modo padrão (`findings_only`), o texto do currículo só é enviado para a A
 - [x] **Etapa 6: Detecção de texto oculto e análise da estrutura do PDF**
 - [x] **Etapa 7: Análise de instruções suspeitas assistida por IA**
 - [x] **Etapa 8: Integração com n8n e automação de workflow**
-- [ ] **Etapa 9: Testes e validação expandidos**
+- [ ] **Etapa 9: Testes e validação expandidos** (falta repetir a validação com currículos feitos no Word, Google Docs e Canva)
+- [x] **Etapa 10: Correções da validação** (prompt da IA, falso positivo da faixa colorida, relatório detalhado, ataque visível e parafraseado)
+- [ ] **Etapa 11: Análise em lote de currículos** (comando de pasta e relatório HTML prontos; falta o formulário com vários PDFs no n8n)
 
 ## Status
 

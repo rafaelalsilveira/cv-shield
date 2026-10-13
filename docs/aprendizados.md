@@ -14,7 +14,9 @@ Isso também revelou uma limitação mais profunda: o detector de frases depende
 
 ## Falso positivo com fundo colorido
 
-O detector estrutural traz uma limitação própria: ele assume que o fundo da página é branco, então só avalia a cor do próprio texto, e não o que está atrás dele. Um currículo legítimo com texto branco sobre uma faixa lateral colorida (um padrão de design comum, demonstrado em `examples/test_colored_band_resume.pdf`) hoje é sinalizado como falso positivo. Isso está documentado em um teste dedicado marcado com `@expectedFailure`, de modo que a suíte registra a limitação sem tratá-la como regressão. Corrigir isso exigiria rastrear preenchimentos e retângulos desenhados atrás do texto, e fica para uma iteração futura.
+O detector estrutural começou assumindo que o fundo da página é branco, então um currículo legítimo com texto branco sobre uma faixa lateral colorida (um padrão de design comum, em `examples/test_colored_band_resume.pdf`) era sinalizado como falso positivo. Isso ficou registrado por um tempo em um teste `@expectedFailure`.
+
+Foi corrigido na Etapa 10: o detector rastreia os retângulos preenchidos desenhados atrás do texto e só marca texto quase branco quando o contraste com o fundo é menor que 3:1 (a razão mínima de contraste da WCAG). A limitação que sobrou: só retângulos preenchidos contam como fundo, então um fundo em imagem ou em degradê ainda não é reconhecido.
 
 ## Versões do pypdf
 
@@ -35,6 +37,27 @@ Para tornar o pipeline reutilizável, a lógica de análise foi movida da `main(
 ## Detalhes do n8n
 
 Ao montar o workflow do n8n, as restrições de acesso a arquivos do n8n e o jeito como ele nomeia campos binários causaram dois erros nada óbvios. Trocar o nó de leitura de arquivo por um formulário de upload evitou o primeiro e deixou o workflow mais fácil de usar (detalhes em [n8n.md](n8n.md)).
+
+## Ataque visível e parafraseado
+
+Um currículo com a manipulação em texto normal e visível, escrita com palavras diferentes das da lista (`examples/CV_Henrique_visible.pdf`), passava pelos dois detectores e a IA nem chegava a rodar, então o relatório dizia `none`, como se o currículo estivesse limpo. Agora, sem achados, o relatório devolve `not_reviewed` ("a IA não leu"), porque a ausência de achados locais não prova que o currículo está limpo. O interruptor `AI_REVIEW_MODE=always` faz a IA ler todo currículo e pega esse caso, ao custo de gastar mais cota e enviar o texto de todos à Groq. O limite de texto enviado à IA subiu de 4000 para 12000 caracteres, porque o ataque costuma estar no fim do currículo, e o relatório marca `text_truncated` quando precisa cortar.
+
+## A IA pode citar o que não está no currículo
+
+Para mostrar a mensagem escondida de cada currículo sinalizado, a IA também devolve a frase exata que achou suspeita (`suspicious_text`). Como um modelo pode errar ou inventar, o código confere se a frase existe no texto que a IA recebeu (ignorando maiúsculas, espaços e quebras de linha, que o PDF costuma partir) e grava `suspicious_text_found`. Se a frase não existir, o relatório HTML mostra um aviso para conferir o PDF antes de confiar nela.
+
+## Resposta da IA cortada pelo limite de tokens
+
+O modelo `openai/gpt-oss-120b` gasta parte do limite de tokens da resposta "pensando". Medimos uma resposta de 436 tokens, dos quais 280 foram só de raciocínio, contra um limite de 500. Em algumas rodadas o raciocínio era um pouco maior, a resposta era cortada no meio do JSON e o parecer virava `unknown`, de forma intermitente. A correção foi subir o limite para 2000 tokens e, quando a Groq informa que a resposta foi cortada (`finish_reason` igual a `length`), dizer isso no parecer em vez de um erro genérico de JSON. A causa só apareceu porque imprimimos o `finish_reason` e o uso de tokens de uma chamada real.
+
+## Lote de currículos
+
+O lote (`python -m src.batch pasta`) reaproveita o `analyze_pdf`, então não duplica a lógica de análise. Algumas decisões:
+
+- Um PDF quebrado vira "erro" na lista e não derruba os outros.
+- Um currículo é "atenção" quando os detectores acham algo ou a IA dá risco `low`, `medium` ou `high`. `not_reviewed`, `none` e `unknown` sem achados contam como "ok", porque, no modo padrão, quase todo currículo seria sinalizado se `not_reviewed` contasse. Por isso o relatório avisa que "ok" não prova que o currículo está limpo.
+- O relatório HTML é um arquivo único, sem recursos externos, e todo texto vindo de currículo ou da IA passa por `html.escape`: o conteúdo de um currículo é dado não confiável e não pode virar código na página (há testes com `<script>`).
+- O relatório tem trechos dos currículos, então o `.gitignore` ignora `relatorio_*.html`.
 
 ## Aviso do httpx nos testes
 
