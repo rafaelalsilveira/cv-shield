@@ -2,7 +2,12 @@ import os
 import unittest
 from unittest.mock import MagicMock, patch
 
-from src.ai_analysis import MAX_TEXT_CHARS, analyze_with_ai, get_review_mode
+from src.ai_analysis import (
+    MAX_OUTPUT_TOKENS,
+    MAX_TEXT_CHARS,
+    analyze_with_ai,
+    get_review_mode,
+)
 
 
 def make_fake_client(response_text):
@@ -268,6 +273,31 @@ class TestSuspiciousText(unittest.TestCase):
 
         self.assertFalse(result["suspicious_text_found"])
         self.assertTrue(result["text_truncated"])
+
+
+class TestOutputLimit(unittest.TestCase):
+
+    FINDINGS = [{"category": "instruction_override", "pattern": "x"}]
+
+    def test_request_uses_the_output_token_limit_with_room_to_think(self):
+        client = make_fake_client(VALID_RESPONSE)
+
+        analyze_with_ai("texto", self.FINDINGS, client=client)
+
+        kwargs = client.chat.completions.create.call_args.kwargs
+        self.assertEqual(kwargs["max_tokens"], MAX_OUTPUT_TOKENS)
+        # Com 500 a resposta já chegou a 436 tokens e foi cortada em outra rodada.
+        self.assertGreaterEqual(MAX_OUTPUT_TOKENS, 1500)
+
+    def test_response_cut_by_the_limit_is_reported_as_cut_off(self):
+        client = make_fake_client('{"risk_level": "medium", "reasoning": "cort')
+        client.chat.completions.create.return_value.choices[0].finish_reason = "length"
+
+        result = analyze_with_ai("texto", self.FINDINGS, client=client)
+
+        self.assertEqual(result["risk_level"], "unknown")
+        self.assertIn("cut off", result["reasoning"])
+        self.assertIn("token limit", result["reasoning"])
 
 
 if __name__ == "__main__":

@@ -18,6 +18,12 @@ DEFAULT_REVIEW_MODE = "findings_only"
 # o ataque está no fim), então o corte não pode ser pequeno.
 MAX_TEXT_CHARS = 12000
 
+# Limite de tokens da resposta. No gpt-oss o "pensamento" do modelo conta
+# dentro deste limite: com 500, um currículo com ataque gastou 436 (280 só
+# pensando), e quando o modelo pensa um pouco mais a resposta é cortada no
+# meio do JSON e a análise vira "unknown". 2000 dá folga de sobra.
+MAX_OUTPUT_TOKENS = 2000
+
 SYSTEM_PROMPT = """You are a security reviewer helping a human recruiter assess \
 a candidate's resume. You will be given the resume's extracted text and a list \
 of findings from two deterministic detectors: one that matches known \
@@ -135,7 +141,7 @@ def analyze_with_ai(extracted_text, findings, client=None):
     try:
         response = client.chat.completions.create(
             model=MODEL,
-            max_tokens=500,
+            max_tokens=MAX_OUTPUT_TOKENS,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {
@@ -144,6 +150,14 @@ def analyze_with_ai(extracted_text, findings, client=None):
                 },
             ],
         )
+        if response.choices[0].finish_reason == "length":
+            # Resposta cortada pelo limite de tokens: o JSON está incompleto.
+            return {
+                "risk_level": "unknown",
+                "reasoning": "The AI reviewer's response was cut off by the "
+                "token limit, so it could not be read.",
+                "recommendation": "Review the findings manually.",
+            }
         raw_text = response.choices[0].message.content
         assessment = json.loads(raw_text)
         if isinstance(assessment, dict):
