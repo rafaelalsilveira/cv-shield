@@ -59,6 +59,19 @@ def attention_row(name="suspeito.pdf", findings=None, ai=None):
     }
 
 
+def not_analyzed_row(name="nao_lido.pdf", reasoning="AI-assisted analysis failed: cota"):
+    ai = {"risk_level": "unknown"}
+    if reasoning is not None:
+        ai["reasoning"] = reasoning
+    return {
+        "file": name,
+        "status": "not_analyzed",
+        "finding_count": 0,
+        "risk_level": "unknown",
+        "report": {"findings": [], "ai_assessment": ai},
+    }
+
+
 def error_row(name="quebrado.pdf", message="PdfReadError: arquivo corrompido"):
     return {"file": name, "status": "error", "error": message}
 
@@ -68,6 +81,7 @@ def make_batch(results):
         "total": len(results),
         "ok": sum(1 for r in results if r["status"] == "ok"),
         "attention": sum(1 for r in results if r["status"] == "attention"),
+        "not_analyzed": sum(1 for r in results if r["status"] == "not_analyzed"),
         "error": sum(1 for r in results if r["status"] == "error"),
     }
     return {"folder": "minha_pasta", "summary": summary, "results": results}
@@ -79,17 +93,22 @@ def render(results):
 
 class TestRenderHtml(unittest.TestCase):
 
-    def test_headline_counts_analyzed_and_flagged(self):
+    def test_headline_counts_received_and_flagged(self):
         html = render([ok_row("a.pdf"), ok_row("b.pdf"), attention_row("c.pdf")])
 
-        self.assertIn("3 analisados, 1 sinalizados", html)
+        self.assertIn("3 recebidos, 1 sinalizados", html)
 
-    def test_headline_mentions_errors_only_when_there_are_some(self):
+    def test_headline_mentions_unread_only_when_there_are_some(self):
         without = render([ok_row()])
         with_error = render([ok_row(), error_row()])
 
-        self.assertNotIn("com erro", without)
-        self.assertIn("2 analisados, 0 sinalizados, 1 com erro", with_error)
+        self.assertNotIn("não analisado", without)
+        self.assertIn("2 recebidos, 0 sinalizados, 1 não analisado", with_error)
+
+    def test_headline_adds_not_analyzed_and_errors_together(self):
+        html = render([ok_row(), not_analyzed_row(), error_row()])
+
+        self.assertIn("3 recebidos, 0 sinalizados, 2 não analisados", html)
 
     def test_table_lists_every_resume_with_its_status(self):
         html = render([ok_row("a.pdf"), attention_row("b.pdf"), error_row("c.pdf")])
@@ -114,12 +133,13 @@ class TestRenderHtml(unittest.TestCase):
         html = render([ok_row()])
 
         self.assertNotIn("Currículos que merecem atenção", html)
+        self.assertNotIn("<h2>Não analisados</h2>", html)
         self.assertNotIn("Texto escondido no PDF", html)
 
     def test_error_resume_shows_the_error_message(self):
         html = render([error_row("quebrado.pdf", "PdfReadError: corrompido")])
 
-        self.assertIn("PDFs que não puderam ser lidos", html)
+        self.assertIn("<h2>Não analisados</h2>", html)
         self.assertIn("PdfReadError: corrompido", html)
 
     def test_phrase_findings_are_listed(self):
@@ -162,7 +182,7 @@ class TestRenderHtml(unittest.TestCase):
         html = render([])
 
         self.assertIn("Nenhum PDF encontrado na pasta", html)
-        self.assertIn("0 analisados, 0 sinalizados", html)
+        self.assertIn("0 recebidos, 0 sinalizados", html)
 
     def test_page_is_self_contained(self):
         html = render([ok_row()])
@@ -171,6 +191,76 @@ class TestRenderHtml(unittest.TestCase):
         self.assertNotIn("https://", html)
         self.assertNotIn("<script", html)
         self.assertIn('lang="pt-BR"', html)
+
+
+class TestNotAnalyzed(unittest.TestCase):
+    """O status not_analyzed (a IA falhou e ninguém leu o currículo)."""
+
+    def test_badge_has_portuguese_label_and_its_own_class(self):
+        html = render([not_analyzed_row()])
+
+        self.assertIn('class="badge not_analyzed"', html)
+        self.assertIn(">Não analisado<", html)
+        self.assertIn(".badge.not_analyzed", html)
+
+    def test_table_shows_ai_failed_risk(self):
+        html = render([not_analyzed_row()])
+
+        self.assertIn("IA falhou", html)
+
+    def test_card_shows_the_recorded_reason(self):
+        html = render([not_analyzed_row(reasoning="GROQ_API_KEY is not set")])
+
+        self.assertIn("<h2>Não analisados</h2>", html)
+        self.assertIn("a IA não conseguiu lê-lo", html)
+        self.assertIn("Motivo registrado:", html)
+        self.assertIn("GROQ_API_KEY is not set", html)
+
+    def test_card_without_reason_uses_default_text(self):
+        html = render([not_analyzed_row(reasoning=None)])
+
+        self.assertIn("Nenhum motivo foi registrado.", html)
+
+    def test_card_without_report_does_not_break(self):
+        row = {"file": "x.pdf", "status": "not_analyzed", "finding_count": 0}
+
+        html = render([row])
+
+        self.assertIn("Nenhum motivo foi registrado.", html)
+
+    def test_not_analyzed_and_error_share_the_same_pile(self):
+        html = render([not_analyzed_row("a.pdf"), error_row("b.pdf")])
+
+        self.assertEqual(html.count("<h2>Não analisados</h2>"), 1)
+        self.assertIn('class="badge not_analyzed"', html)
+        self.assertIn('class="badge error"', html)
+
+    def test_pile_keeps_the_order_of_the_batch(self):
+        html = render([error_row("primeiro.pdf"), not_analyzed_row("segundo.pdf")])
+        pile = html.split("<h2>Não analisados</h2>")[1]
+
+        self.assertLess(pile.index("primeiro.pdf"), pile.index("segundo.pdf"))
+
+    def test_not_analyzed_has_no_attention_card(self):
+        html = render([not_analyzed_row()])
+
+        self.assertNotIn("Currículos que merecem atenção", html)
+
+    def test_summary_adds_up_with_all_four_statuses(self):
+        html = render([ok_row(), attention_row(), not_analyzed_row(), error_row()])
+
+        self.assertIn('<div class="stat"><b>4</b>Total</div>', html)
+        self.assertIn('<div class="stat"><b>1</b>OK</div>', html)
+        self.assertIn('<div class="stat"><b>1</b>Atenção</div>', html)
+        self.assertIn('<div class="stat"><b>2</b>Não analisados</div>', html)
+
+    def test_summary_accepts_old_format_without_not_analyzed_counter(self):
+        batch = make_batch([ok_row(), error_row()])
+        del batch["summary"]["not_analyzed"]
+
+        html = render_html(batch, generated_at=FIXED_TIME)
+
+        self.assertIn('<div class="stat"><b>1</b>Não analisados</div>', html)
 
 
 class TestEscaping(unittest.TestCase):
@@ -209,6 +299,10 @@ class TestEscaping(unittest.TestCase):
 
         self.assert_escaped(render([error_row(message=self.EVIL)]))
         self.assert_escaped(render([attention_row(findings=findings)]))
+
+    def test_not_analyzed_reason_and_file_name_are_escaped(self):
+        self.assert_escaped(render([not_analyzed_row(reasoning=self.EVIL)]))
+        self.assert_escaped(render([not_analyzed_row(name=self.EVIL + ".pdf")]))
 
     def test_folder_name_is_escaped(self):
         batch = make_batch([])

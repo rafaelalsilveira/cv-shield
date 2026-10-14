@@ -7,7 +7,17 @@ que vem de currículo ou da IA passa por html.escape: o texto de um currículo
 from datetime import datetime
 from html import escape
 
-STATUS_LABELS = {"ok": "OK", "attention": "Atenção", "error": "Erro"}
+STATUS_LABELS = {
+    "ok": "OK",
+    "attention": "Atenção",
+    "not_analyzed": "Não analisado",
+    "error": "Erro",
+}
+
+# Status que ninguém leu de verdade. No Python eles seguem separados
+# (not_analyzed = a IA falhou; error = o PDF não abriu), mas na página os dois
+# aparecem juntos, na pilha "Não analisados".
+UNREAD_STATUSES = ("not_analyzed", "error")
 
 REASON_LABELS = {
     "tiny_font": "fonte minúscula",
@@ -32,11 +42,15 @@ RISK_LABELS = {
 CSS = """
 :root { --bg:#f6f7f9; --card:#fff; --text:#1d2330; --muted:#5d6678;
   --line:#dfe3ea; --ok:#1c7a3d; --attention:#b45309; --error:#b42318;
-  --ok-bg:#e6f4ea; --attention-bg:#fdf0dc; --error-bg:#fde8e6; }
+  --na:#3f5273;
+  --ok-bg:#e6f4ea; --attention-bg:#fdf0dc; --error-bg:#fde8e6;
+  --na-bg:#e6ebf4; }
 @media (prefers-color-scheme: dark) {
   :root { --bg:#14171d; --card:#1d222b; --text:#e8ebf1; --muted:#9aa4b5;
     --line:#2f3643; --ok:#5fcf86; --attention:#f2b25c; --error:#f08a80;
-    --ok-bg:#183425; --attention-bg:#3a2b12; --error-bg:#3d1c19; } }
+    --na:#a9b8d4;
+    --ok-bg:#183425; --attention-bg:#3a2b12; --error-bg:#3d1c19;
+    --na-bg:#262e3d; } }
 * { box-sizing:border-box; }
 body { margin:0; padding:24px 16px 48px; background:var(--bg); color:var(--text);
   font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif; }
@@ -61,6 +75,7 @@ tr:last-child td { border-bottom:0; }
 .badge.ok { color:var(--ok); background:var(--ok-bg); }
 .badge.attention { color:var(--attention); background:var(--attention-bg); }
 .badge.error { color:var(--error); background:var(--error-bg); }
+.badge.not_analyzed { color:var(--na); background:var(--na-bg); }
 .card { background:var(--card); border:1px solid var(--line); border-radius:10px;
   padding:16px 18px; margin-bottom:16px; }
 .card h3 { margin:0 0 4px; font-size:1.05rem; overflow-wrap:anywhere; }
@@ -71,6 +86,7 @@ blockquote { margin:6px 0; padding:8px 12px; border-left:4px solid var(--attenti
 .warn { color:var(--error); font-weight:600; }
 ul { margin:6px 0; padding-left:20px; }
 li { overflow-wrap:anywhere; }
+.reason { overflow-wrap:anywhere; }
 .note { margin-top:32px; }
 """
 
@@ -91,12 +107,21 @@ def risk_text(risk_level):
     return RISK_LABELS.get(risk_level, str(risk_level))
 
 
+def unread_count(summary):
+    """Quantos PDFs ninguém leu: not_analyzed (IA falhou) + error (PDF quebrado).
+
+    Usa .get para aceitar um resumo antigo, sem o contador not_analyzed.
+    """
+    return summary.get("not_analyzed", 0) + summary.get("error", 0)
+
+
 def render_summary(summary):
+    # OK + Atenção + Não analisados = Total, para a soma fechar.
     stats = [
-        ("Analisados", summary["total"]),
+        ("Total", summary["total"]),
         ("OK", summary["ok"]),
         ("Atenção", summary["attention"]),
-        ("Erro", summary["error"]),
+        ("Não analisados", unread_count(summary)),
     ]
     cells = "".join(
         f'<div class="stat"><b>{esc(number)}</b>{esc(label)}</div>'
@@ -238,11 +263,35 @@ def render_attention_card(row):
     )
 
 
+def render_not_analyzed_card(row):
+    """Cartão de um currículo que ninguém leu porque a IA falhou.
+
+    O motivo é o "reasoning" que o ai_analysis.py guarda quando a IA falha
+    (hoje vem em inglês). É texto não confiável: passa pelo esc.
+    """
+    ai_assessment = (row.get("report") or {}).get("ai_assessment") or {}
+    reason = ai_assessment.get("reasoning") or "Nenhum motivo foi registrado."
+    return (
+        f'<section class="card"><h3>{esc(row["file"])} {badge("not_analyzed")}</h3>'
+        "<p>Os detectores locais não acharam nada neste currículo, mas a IA "
+        "não conseguiu lê-lo. Por isso ninguém analisou o conteúdo: abra o "
+        "PDF e confira antes de considerar que está sem sinais.</p>"
+        f'<p class="reason"><b>Motivo registrado:</b> {esc(reason)}</p>'
+        "</section>"
+    )
+
+
 def render_error_card(row):
     return (
         f'<section class="card"><h3>{esc(row["file"])} {badge("error")}</h3>'
         f'<p>Não foi possível analisar este PDF: {esc(row["error"])}</p></section>'
     )
+
+
+def render_unread_card(row):
+    if row["status"] == "not_analyzed":
+        return render_not_analyzed_card(row)
+    return render_error_card(row)
 
 
 def render_html(batch, generated_at=None):
@@ -252,20 +301,22 @@ def render_html(batch, generated_at=None):
     summary = batch["summary"]
 
     attention = [r for r in results if r["status"] == "attention"]
-    errors = [r for r in results if r["status"] == "error"]
+    unread = [r for r in results if r["status"] in UNREAD_STATUSES]
 
     details = ""
     if attention:
         details += "<h2>Currículos que merecem atenção</h2>"
         details += "".join(render_attention_card(r) for r in attention)
-    if errors:
-        details += "<h2>PDFs que não puderam ser lidos</h2>"
-        details += "".join(render_error_card(r) for r in errors)
+    if unread:
+        details += "<h2>Não analisados</h2>"
+        details += "".join(render_unread_card(r) for r in unread)
 
-    headline = (
-        f"{summary['total']} analisados, {summary['attention']} sinalizados"
-        + (f", {summary['error']} com erro" if summary["error"] else "")
-    )
+    # "recebidos" e não "analisados": o total inclui PDFs que ninguém leu.
+    headline = f"{summary['total']} recebidos, {summary['attention']} sinalizados"
+    unread_total = unread_count(summary)
+    if unread_total:
+        plural = "s" if unread_total > 1 else ""
+        headline += f", {unread_total} não analisado{plural}"
 
     return (
         '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">'
