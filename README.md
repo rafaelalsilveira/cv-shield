@@ -134,9 +134,33 @@ Os principais pontos encontrados durante o desenvolvimento:
 
 A versão completa, com o contexto de cada problema, está em [docs/aprendizados.md](docs/aprendizados.md).
 
+## Próximas Melhorias
+
+O que já está mapeado para as próximas etapas:
+
+- **Validar em outros editores (Etapa 9):** gerar o mesmo currículo fictício no Word, no Google Docs e no Canva e conferir se os detectores se comportam do mesmo jeito, com um script `validate_folder.py`. Cada editor grava fonte, cor e posição de um jeito diferente, e isso pode gerar falsos positivos ou deixar passar texto escondido.
+- **Metadados do PDF como sinal:** usar informações do próprio arquivo (como o programa que o gerou) como mais um indício para a revisão humana.
+- **Frases suspeitas em português:** ampliar a lista do `detector.py`, que hoje só reconhece frases em inglês.
+- **Fundos em imagem e em degradê:** hoje só retângulos preenchidos contam como fundo no detector de texto escondido.
+- **Lote separado em pastas:** além do relatório HTML, copiar os PDFs do lote para uma pasta por pilha.
+- **Aviso de depreciação nos testes:** resolver o `StarletteDeprecationWarning`, que aparece ao rodar a suíte. Não é erro, mas vale limpar.
+- **Aviso para o RH:** mandar um e-mail ou uma mensagem no Slack quando a pilha "Para revisar" não estiver vazia.
+
 ## Nota de Privacidade
 
 No modo padrão (`findings_only`), o texto do currículo só é enviado para a API da Groq quando os detectores encontram algo. No modo `always`, o texto de **todo** currículo é enviado. O relatório HTML do lote guarda trechos dos currículos e fica só no seu computador (o Git o ignora), mas não o compartilhe se os currículos forem reais. Use currículos fictícios ou anonimizados, a menos que você aceite esse envio. Para currículos reais de terceiros, a LGPD se aplica: verifique a base legal e os termos do provedor antes de ligar o modo `always`.
+
+## Do Protótipo à Produção
+
+Hoje o CV Shield roda no computador de quem o instala, com currículos fictícios. Para uso real em uma empresa, faltam alguns passos que são decisões de projeto, e não só código:
+
+- **LGPD:** definir a base legal para tratar os currículos, avisar os candidatos, conferir os termos do provedor de IA e decidir por quanto tempo os dados são guardados. No modo `always`, o texto de todos os currículos vai para a Groq, então esse ponto pesa mais.
+- **Autenticação na API:** hoje, quem alcançar o endereço consegue chamar o `/analyze`. Em produção, a API precisa exigir uma credencial.
+- **Servidor fora do computador pessoal:** colocar a API e o n8n em um servidor, com HTTPS, e guardar a chave da Groq em um cofre de segredos, e não em um arquivo `.env` local.
+- **Limite de uso:** limitar quantas análises cada origem pode fazer por período, para proteger a cota do provedor de IA e evitar abuso.
+- **Logs sem dados dos candidatos:** registrar o que é necessário para investigar problemas (horário, status, tamanho do arquivo), sem gravar nome, trechos ou o conteúdo dos currículos.
+
+Em qualquer cenário, a decisão sobre cada currículo continua sendo humana: o CV Shield só aponta sinais.
 
 ## Tecnologias
 
