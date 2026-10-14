@@ -34,7 +34,16 @@ O CV Shield analisa um currículo em PDF usando três camadas de detecção:
 
 1. **Detector de frases suspeitas**: extrai o texto e compara com uma lista de frases manipulativas conhecidas.
 2. **Detector de texto oculto**: inspeciona o tamanho da fonte, a cor e a posição de cada trecho de texto (não só o conteúdo) e sinaliza fontes menores que 3pt, texto quase branco (RGB e CMYK) e texto posicionado fora da área visível da página. Ele consegue pegar instruções ocultas mesmo quando elas evitam todas as frases conhecidas, porque olha para como o texto é renderizado, e não para o que ele diz.
-3. **Análise assistida por IA**: envia o texto e os achados dos dois detectores para um LLM (API gratuita da Groq), que devolve um nível de risco (`none`, `low`, `medium`, `high`), uma explicação curta, uma recomendação de próximo passo e a frase exata do currículo que parece dirigida a um avaliador automático (`suspicious_text`). O código confere se essa frase existe mesmo no texto do PDF (`suspicious_text_found`), porque a IA pode errar e citar o que não está lá. Por padrão (`AI_REVIEW_MODE=findings_only`) essa etapa é pulada quando não há achados, para economizar cota e não enviar o texto à toa. Nesse caso o relatório devolve `not_reviewed` (a IA não leu o currículo), e não `none`, porque "sem achados locais" não prova que o currículo está limpo. Com `AI_REVIEW_MODE=always`, a IA lê todo currículo, e assim consegue pegar manipulação parafraseada e em texto visível, que os detectores locais não veem. Se o currículo passar de 12.000 caracteres, a IA lê só o início e o relatório marca `text_truncated: true`.
+3. **Análise assistida por IA**: envia o texto e os achados dos dois detectores para um LLM (API gratuita da Groq). Ele devolve:
+   - um nível de risco (`none`, `low`, `medium` ou `high`);
+   - uma explicação curta e uma recomendação de próximo passo;
+   - a frase exata do currículo que parece dirigida a um avaliador automático (`suspicious_text`).
+
+   Como essa etapa funciona:
+   - **Conferência da frase:** o código confere se a frase citada existe mesmo no texto do PDF (`suspicious_text_found`), porque a IA pode errar e citar o que não está lá.
+   - **Modo padrão (`AI_REVIEW_MODE=findings_only`):** a IA só lê os currículos em que os detectores acharam algo, para economizar cota e não enviar o texto à toa. Sem achados, o relatório devolve `not_reviewed` (a IA não leu o currículo), e não `none`, porque "sem achados locais" não prova que o currículo está limpo.
+   - **Modo `always`:** a IA lê todo currículo e, assim, consegue pegar manipulação parafraseada e em texto visível, que os detectores locais não veem.
+   - **Currículos longos:** se o currículo passar de 12.000 caracteres, a IA lê só o início e o relatório marca `text_truncated: true`.
 
 **Importante:** o CV Shield não toma decisões de contratação. Ele apenas aponta possíveis evidências para revisão humana.
 
