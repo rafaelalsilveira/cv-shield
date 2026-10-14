@@ -7,7 +7,13 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from src.batch import analyze_folder, classify_report, list_pdfs, main
+from src.batch import (
+    analyze_folder,
+    classify_report,
+    list_pdfs,
+    main,
+    print_progress,
+)
 
 EXAMPLES_DIR = os.path.join(os.path.dirname(__file__), "..", "examples")
 
@@ -19,6 +25,11 @@ CLEAN_ASSESSMENT = {
 HIGH_ASSESSMENT = {
     "risk_level": "high",
     "reasoning": "motivo falso",
+    "recommendation": "acao falsa",
+}
+UNKNOWN_ASSESSMENT = {
+    "risk_level": "unknown",
+    "reasoning": "AI-assisted analysis failed: motivo falso",
     "recommendation": "acao falsa",
 }
 
@@ -37,13 +48,21 @@ def make_report(finding_count=0, risk_level="not_reviewed"):
 class TestClassifyReport(unittest.TestCase):
 
     def test_no_findings_and_not_reviewed_is_ok(self):
+        # Modo padrão: a IA não foi chamada de propósito. Não é falha.
         self.assertEqual(classify_report(make_report(0, "not_reviewed")), "ok")
 
     def test_no_findings_and_none_is_ok(self):
         self.assertEqual(classify_report(make_report(0, "none")), "ok")
 
-    def test_ai_failure_without_findings_is_ok(self):
-        self.assertEqual(classify_report(make_report(0, "unknown")), "ok")
+    def test_ai_failure_without_findings_is_not_analyzed(self):
+        # A IA falhou e não há achados locais: ninguém leu o currículo.
+        self.assertEqual(
+            classify_report(make_report(0, "unknown")), "not_analyzed"
+        )
+
+    def test_ai_failure_with_findings_is_still_attention(self):
+        # Com achados locais já há evidência para a pessoa olhar.
+        self.assertEqual(classify_report(make_report(1, "unknown")), "attention")
 
     def test_findings_mean_attention(self):
         self.assertEqual(classify_report(make_report(2, "high")), "attention")
@@ -101,7 +120,8 @@ class TestAnalyzeFolder(unittest.TestCase):
         batch = analyze_folder(self.folder)
 
         self.assertEqual(
-            batch["summary"], {"total": 0, "ok": 0, "attention": 0, "error": 0}
+            batch["summary"],
+            {"total": 0, "ok": 0, "attention": 0, "not_analyzed": 0, "error": 0},
         )
         self.assertEqual(batch["results"], [])
 
@@ -116,7 +136,23 @@ class TestAnalyzeFolder(unittest.TestCase):
         self.assertEqual(status_by_file["sample_resume.pdf"], "ok")
         self.assertEqual(status_by_file["CV Ra.pdf"], "attention")
         self.assertEqual(
-            batch["summary"], {"total": 2, "ok": 1, "attention": 1, "error": 0}
+            batch["summary"],
+            {"total": 2, "ok": 1, "attention": 1, "not_analyzed": 0, "error": 0},
+        )
+
+    @patch("src.main.analyze_with_ai", return_value=UNKNOWN_ASSESSMENT)
+    def test_resume_the_ai_could_not_read_is_counted_as_not_analyzed(self, fake_ai):
+        # sample_resume.pdf não tem achados locais; com a IA falhando,
+        # ninguém leu o currículo.
+        self.copy_example("sample_resume.pdf")
+
+        batch = analyze_folder(self.folder)
+
+        self.assertEqual(batch["results"][0]["status"], "not_analyzed")
+        self.assertEqual(batch["results"][0]["risk_level"], "unknown")
+        self.assertEqual(
+            batch["summary"],
+            {"total": 1, "ok": 0, "attention": 0, "not_analyzed": 1, "error": 0},
         )
 
     @patch("src.main.analyze_with_ai", return_value=HIGH_ASSESSMENT)
@@ -155,7 +191,8 @@ class TestAnalyzeFolder(unittest.TestCase):
         self.assertIn("error", broken)
         self.assertNotIn("report", broken)
         self.assertEqual(
-            batch["summary"], {"total": 3, "ok": 2, "attention": 0, "error": 1}
+            batch["summary"],
+            {"total": 3, "ok": 2, "attention": 0, "not_analyzed": 0, "error": 1},
         )
 
     def test_any_exception_from_analyze_pdf_becomes_error(self):
@@ -184,6 +221,35 @@ class TestAnalyzeFolder(unittest.TestCase):
 
         self.assertEqual(
             calls, [(1, 2, "a.pdf", "error"), (2, 2, "b.pdf", "error")]
+        )
+
+
+class TestPrintProgress(unittest.TestCase):
+
+    def run_print_progress(self, position, total, row):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            print_progress(position, total, row)
+        return out.getvalue()
+
+    def test_not_analyzed_has_its_own_label(self):
+        row = {"file": "a.pdf", "status": "not_analyzed"}
+
+        text = self.run_print_progress(3, 10, row)
+
+        self.assertIn("[3/10] a.pdf ... NÃO ANALISADO", text)
+
+    def test_other_statuses_keep_their_labels(self):
+        self.assertIn(
+            "... ok", self.run_print_progress(1, 2, {"file": "a.pdf", "status": "ok"})
+        )
+        self.assertIn(
+            "... ATENÇÃO",
+            self.run_print_progress(1, 2, {"file": "a.pdf", "status": "attention"}),
+        )
+        self.assertIn(
+            "... ERRO",
+            self.run_print_progress(1, 2, {"file": "a.pdf", "status": "error"}),
         )
 
 
@@ -228,6 +294,18 @@ class TestMain(unittest.TestCase):
             html = html_file.read()
         self.assertIn("CV Ra.pdf", html)
         self.assertIn("Texto escondido no PDF", html)
+
+    @patch("src.main.analyze_with_ai", return_value=UNKNOWN_ASSESSMENT)
+    def test_lists_resumes_the_ai_could_not_read(self, fake_ai):
+        self.copy_example("sample_resume.pdf")
+
+        code, out, _ = self.run_main(self.pdfs, "-o", self.output)
+
+        self.assertEqual(code, 0)
+        self.assertIn("1 não analisados", out)
+        # Dois espaços antes do nome: só a lista final, não a linha de andamento.
+        self.assertIn("  NÃO ANALISADO  sample_resume.pdf", out)
+        self.assertTrue(os.path.exists(self.output))
 
     def test_broken_pdf_is_listed_as_error_and_exit_code_is_still_zero(self):
         Path(self.pdfs, "quebrado.pdf").write_bytes(b"%PDF-1.4 conteudo quebrado")

@@ -2,7 +2,8 @@
 
 Reaproveita o analyze_pdf (src/main.py). Um PDF quebrado vira status "error"
 e não derruba os outros. Quem decide o que fazer com os sinalizados é uma
-pessoa: aqui só se separa o que está ok do que merece atenção.
+pessoa: aqui só se separa o que merece atenção do que não tem sinais e do que
+não foi lido.
 
 Uso: python -m src.batch minha_pasta
 """
@@ -16,9 +17,13 @@ from src.main import analyze_pdf
 
 # Níveis de risco da IA que mandam o currículo para "attention", mesmo sem
 # achados dos detectores locais (acontece com AI_REVIEW_MODE=always, quando a
-# IA lê um ataque visível e parafraseado). "none", "not_reviewed" e "unknown"
-# não sinalizam: "unknown" é a IA que falhou, e sem achados locais não há
-# evidência para apontar o currículo.
+# IA lê um ataque visível e parafraseado). "none" e "not_reviewed" não
+# sinalizam: "not_reviewed" é o modo padrão, em que a IA não é chamada de
+# propósito quando não há achados.
+#
+# "unknown" também não sinaliza, mas tampouco vira "ok": é a IA que falhou
+# (cota, rede, chave). Sem achados locais, ninguém leu o currículo, então ele
+# vai para "not_analyzed" em vez de fingir que está sem sinais.
 ATTENTION_RISK_LEVELS = ("low", "medium", "high")
 
 
@@ -41,13 +46,24 @@ def list_pdfs(folder):
 
 
 def classify_report(report):
-    """Decide o status de um relatório: "attention" ou "ok"."""
+    """Decide o status de um relatório: "attention", "not_analyzed" ou "ok".
+
+    A ordem das regras importa:
+    1. achados locais, ou IA com risco low/medium/high: "attention";
+    2. IA que falhou ("unknown") sem achados locais: "not_analyzed";
+    3. todo o resto: "ok".
+    """
     if report["summary"]["finding_count"] > 0:
         return "attention"
 
     ai_assessment = report.get("ai_assessment") or {}
-    if ai_assessment.get("risk_level") in ATTENTION_RISK_LEVELS:
+    risk_level = ai_assessment.get("risk_level")
+
+    if risk_level in ATTENTION_RISK_LEVELS:
         return "attention"
+
+    if risk_level == "unknown":
+        return "not_analyzed"
 
     return "ok"
 
@@ -92,6 +108,7 @@ def analyze_folder(folder, on_result=None):
         "total": len(results),
         "ok": sum(1 for r in results if r["status"] == "ok"),
         "attention": sum(1 for r in results if r["status"] == "attention"),
+        "not_analyzed": sum(1 for r in results if r["status"] == "not_analyzed"),
         "error": sum(1 for r in results if r["status"] == "error"),
     }
 
@@ -100,7 +117,12 @@ def analyze_folder(folder, on_result=None):
 
 DEFAULT_OUTPUT = "relatorio_lote.html"
 
-PROGRESS_LABELS = {"ok": "ok", "attention": "ATENÇÃO", "error": "ERRO"}
+PROGRESS_LABELS = {
+    "ok": "ok",
+    "attention": "ATENÇÃO",
+    "not_analyzed": "NÃO ANALISADO",
+    "error": "ERRO",
+}
 
 
 def print_progress(position, total, row):
@@ -157,11 +179,15 @@ def main(argv=None):
 
     summary = batch["summary"]
     print(f"\n{summary['total']} analisados, {summary['attention']} sinalizados", end="")
+    if summary["not_analyzed"]:
+        print(f", {summary['not_analyzed']} não analisados", end="")
     print(f", {summary['error']} com erro" if summary["error"] else "")
 
     for row in batch["results"]:
         if row["status"] == "attention":
             print(f"  ATENÇÃO  {row['file']}")
+        elif row["status"] == "not_analyzed":
+            print(f"  NÃO ANALISADO  {row['file']}")
         elif row["status"] == "error":
             print(f"  ERRO     {row['file']}: {row['error']}")
 
