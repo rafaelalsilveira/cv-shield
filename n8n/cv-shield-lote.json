@@ -1,0 +1,194 @@
+{
+  "name": "CV Shield - Lote de currículos",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "CV Shield",
+        "formDescription": "Envie um ou mais currículos em PDF para análise",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Currículo",
+              "fieldType": "file",
+              "multipleFiles": true,
+              "acceptFileTypes": ".pdf",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        96,
+        16
+      ],
+      "id": "a1f3c2d4-6b7e-4c1a-9d2f-3e5a7b9c1d01",
+      "name": "Receber currículo (formulário)",
+      "webhookId": "7c4d1e92-3a5b-4f68-8b0c-2d9e6f1a4b53"
+    },
+    {
+      "parameters": {
+        "jsCode": "// O formulário entrega todos os PDFs juntos, em um único item.\n// Aqui separamos: um item por PDF, com o arquivo sempre no campo \"data\".\n// Não dependemos do nome do campo (Curr_culo_0, Curr_culo_1...): pegamos\n// todos os arquivos que chegarem, seja qual for o nome.\nconst results = [];\n\nfor (const item of $input.all()) {\n  const binary = item.binary || {};\n  for (const key of Object.keys(binary)) {\n    const file = binary[key];\n    results.push({\n      json: { file: file.fileName || key },\n      binary: { data: file },\n    });\n  }\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        16
+      ],
+      "id": "a1f3c2d4-6b7e-4c1a-9d2f-3e5a7b9c1d02",
+      "name": "Separar PDFs"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:8000/analyze",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            }
+          ]
+        },
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 2000
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        544,
+        16
+      ],
+      "id": "a1f3c2d4-6b7e-4c1a-9d2f-3e5a7b9c1d03",
+      "name": "Analisar com CV Shield",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Junta o resultado de cada chamada ao /analyze em um único pedido\n// para o /batch-report. Cada item vira {file, report} (deu certo) ou\n// {file, error} (falhou). O nome do arquivo vem do nó \"Separar PDFs\",\n// na mesma ordem das chamadas.\nconst names = $('Separar PDFs').all().map((item) => item.json.file);\nconst items = [];\n\n$input.all().forEach((item, index) => {\n  const data = item.json || {};\n  const fallbackName = names[index] || 'arquivo_' + (index + 1);\n\n  // Relatório do /analyze: tem summary e findings.\n  if (data.summary && Array.isArray(data.findings)) {\n    items.push({ file: data.file || fallbackName, report: data });\n    return;\n  }\n\n  // Qualquer outra coisa é uma falha. Não sabemos o formato exato do erro\n  // que o n8n entrega, então tentamos os lugares mais prováveis.\n  let message = 'Falha ao chamar o /analyze.';\n  if (data.error) {\n    message = typeof data.error === 'string'\n      ? data.error\n      : (data.error.message || JSON.stringify(data.error));\n  } else if (data.detail) {\n    message = typeof data.detail === 'string'\n      ? data.detail\n      : JSON.stringify(data.detail);\n  }\n  items.push({ file: fallbackName, error: String(message).slice(0, 300) });\n});\n\nreturn [{ json: { items } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        768,
+        16
+      ],
+      "id": "a1f3c2d4-6b7e-4c1a-9d2f-3e5a7b9c1d04",
+      "name": "Montar lote"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:8000/batch-report",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        992,
+        16
+      ],
+      "id": "a1f3c2d4-6b7e-4c1a-9d2f-3e5a7b9c1d05",
+      "name": "Gerar relatório"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Transforma a página HTML devolvida pelo /batch-report em um arquivo,\n// para baixar pelo botão Download do n8n e abrir no navegador.\nconst data = $input.first().json;\nconst buffer = Buffer.from(data.html, 'utf-8');\nconst file = await this.helpers.prepareBinaryData(\n  buffer,\n  'relatorio_lote.html',\n  'text/html'\n);\n\nreturn [{ json: { summary: data.summary }, binary: { data: file } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1216,
+        16
+      ],
+      "id": "a1f3c2d4-6b7e-4c1a-9d2f-3e5a7b9c1d06",
+      "name": "Gerar arquivo HTML"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Receber currículo (formulário)": {
+      "main": [
+        [
+          {
+            "node": "Separar PDFs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Separar PDFs": {
+      "main": [
+        [
+          {
+            "node": "Analisar com CV Shield",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analisar com CV Shield": {
+      "main": [
+        [
+          {
+            "node": "Montar lote",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar lote": {
+      "main": [
+        [
+          {
+            "node": "Gerar relatório",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gerar relatório": {
+      "main": [
+        [
+          {
+            "node": "Gerar arquivo HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "5d8e2f10-4a6c-4b97-a1e3-9c0d7f2b8e46",
+  "nodeGroups": [],
+  "id": "Lt4Qx9RvKe2WmNpZ",
+  "tags": []
+}
