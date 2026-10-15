@@ -68,25 +68,46 @@ def classify_report(report):
     return "ok"
 
 
-def analyze_one(pdf_path):
-    """Analisa um PDF e devolve uma linha do lote. Nunca levanta erro."""
-    try:
-        report = analyze_pdf(str(pdf_path))
-    except Exception as exc:
-        return {
-            "file": pdf_path.name,
-            "status": "error",
-            "error": f"{type(exc).__name__}: {exc}",
-        }
+def build_row(file_name, report):
+    """Monta a linha do lote de um PDF que foi analisado.
 
+    O status vem do classify_report: a regra das pilhas fica em um lugar só,
+    e quem chama (pasta local ou API) não precisa repeti-la.
+    """
     ai_assessment = report.get("ai_assessment") or {}
     return {
-        "file": pdf_path.name,
+        "file": file_name,
         "status": classify_report(report),
         "finding_count": report["summary"]["finding_count"],
         "risk_level": ai_assessment.get("risk_level"),
         "report": report,
     }
+
+
+def build_error_row(file_name, message):
+    """Monta a linha do lote de um PDF que não pôde ser analisado."""
+    return {"file": file_name, "status": "error", "error": message}
+
+
+def build_summary(results):
+    """Conta quantos PDFs há em cada status e devolve o resumo do lote."""
+    return {
+        "total": len(results),
+        "ok": sum(1 for r in results if r["status"] == "ok"),
+        "attention": sum(1 for r in results if r["status"] == "attention"),
+        "not_analyzed": sum(1 for r in results if r["status"] == "not_analyzed"),
+        "error": sum(1 for r in results if r["status"] == "error"),
+    }
+
+
+def analyze_one(pdf_path):
+    """Analisa um PDF e devolve uma linha do lote. Nunca levanta erro."""
+    try:
+        report = analyze_pdf(str(pdf_path))
+    except Exception as exc:
+        return build_error_row(pdf_path.name, f"{type(exc).__name__}: {exc}")
+
+    return build_row(pdf_path.name, report)
 
 
 def analyze_folder(folder, on_result=None):
@@ -104,15 +125,11 @@ def analyze_folder(folder, on_result=None):
         if on_result is not None:
             on_result(position, len(pdfs), row)
 
-    summary = {
-        "total": len(results),
-        "ok": sum(1 for r in results if r["status"] == "ok"),
-        "attention": sum(1 for r in results if r["status"] == "attention"),
-        "not_analyzed": sum(1 for r in results if r["status"] == "not_analyzed"),
-        "error": sum(1 for r in results if r["status"] == "error"),
+    return {
+        "folder": str(folder),
+        "summary": build_summary(results),
+        "results": results,
     }
-
-    return {"folder": str(folder), "summary": summary, "results": results}
 
 
 DEFAULT_OUTPUT = "relatorio_lote.html"
