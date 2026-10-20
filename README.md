@@ -14,6 +14,16 @@ O mesmo fluxo, automatizado no n8n: um formulário de upload recebe o PDF e o en
 
 ![Workflow do CV Shield no n8n](docs/images/n8n-workflow.png)
 
+Com o workflow de lote, o formulário recebe vários PDFs de uma vez e o resultado é uma página HTML que separa os currículos em pilhas. Abaixo, a demonstração com 10 currículos fictícios: 5 foram sinalizados para revisão e 5 ficaram em OK.
+
+![Resumo do relatório do lote, com a tabela dos 10 currículos](docs/images/lote-demo-1-resumo.png)
+
+Para cada currículo sinalizado, a página mostra as frases suspeitas, o texto escondido (com página e motivo) e o parecer da IA, com a frase exata que ela apontou e um próximo passo para quem revisa:
+
+![Cartão do currículo CV Bru.pdf, com o texto escondido e o parecer da IA](docs/images/lote-demo-2-parecer.png)
+
+O parecer da IA aparece em inglês (limitação conhecida).
+
 ## O Problema
 
 Como os processos seletivos usam cada vez mais IA para analisar currículos, um documento pode conter instruções ocultas ou manipulativas, feitas para influenciar sistemas automatizados.
