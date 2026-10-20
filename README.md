@@ -80,9 +80,10 @@ Para analisar vários PDFs de uma vez, coloque-os em uma pasta e rode:
 python -m src.batch minha_pasta
 ```
 
-O comando mostra o andamento de cada currículo, um resumo (por exemplo, "10 analisados, 6 sinalizados") e grava um relatório HTML (`relatorio_lote.html`, ou o nome dado com `-o arquivo.html`) que abre direto no navegador. O relatório traz uma tabela com todos os currículos (ok, atenção ou erro) e, para cada sinalizado, o texto escondido encontrado (com página e motivo), a frase suspeita apontada pela IA e o parecer completo. Um PDF quebrado vira "erro" na lista e não interrompe os outros.
+O comando mostra o andamento de cada currículo, um resumo (por exemplo, "10 analisados, 6 sinalizados") e grava um relatório HTML (`relatorio_lote.html`, ou o nome dado com `-o arquivo.html`) que abre direto no navegador. O relatório traz uma tabela com todos os currículos (ok, atenção, não analisado ou erro) e, para cada sinalizado, o texto escondido encontrado (com página e motivo), a frase suspeita apontada pela IA e o parecer completo. Um PDF quebrado vira "erro" na lista e não interrompe os outros.
 
 - Um currículo é marcado como **atenção** quando os detectores acham algo ou quando a IA dá risco `low`, `medium` ou `high`. **ok** não prova que o currículo está limpo: no modo padrão, a IA não leu os currículos sem achados.
+- Um currículo é marcado como **não analisado** quando a IA falhou (por exemplo, por cota, rede ou chave) e os detectores não acharam nada. Nesse caso ninguém leu o currículo, então ele não vai para "ok": fica separado, para uma pessoa olhar.
 - Para a IA ler todos os currículos (e pegar ataques visíveis e parafraseados), rode com `AI_REVIEW_MODE=always`. Isso gasta mais da cota gratuita e envia o texto de todos para a Groq:
 
 ```powershell
@@ -96,20 +97,28 @@ Remove-Item Env:AI_REVIEW_MODE
 
 ## API
 
-| Método | Caminho    | Descrição                                                                   |
-|--------|------------|-----------------------------------------------------------------------------|
-| GET    | `/health`  | Verificação simples de que a API está rodando                               |
-| POST   | `/analyze` | Recebe um PDF (`multipart/form-data`, campo `file`) e devolve o relatório   |
+| Método | Caminho         | Descrição                                                                                                                                         |
+|--------|-----------------|---------------------------------------------------------------------------------------------------------------------------------------------------|
+| GET    | `/health`       | Verificação simples de que a API está rodando                                                                                                     |
+| POST   | `/analyze`      | Recebe um PDF (`multipart/form-data`, campo `file`) e devolve o relatório                                                                         |
+| POST   | `/batch-report` | Recebe os resultados de vários currículos (cada item com `file` e `report`, ou `file` e `error`) e devolve o resumo e a página HTML com as pilhas |
 
 O relatório contém os achados e a avaliação da IA, mas não o texto completo do currículo. Os uploads são validados antes da análise: arquivos acima de 5 MB são rejeitados (413), arquivos sem a assinatura de PDF ou que não podem ser lidos são rejeitados (400), e a cópia temporária do arquivo é apagada logo após a análise.
 
 ## Integração com n8n
 
-Um workflow do n8n exportado (`n8n/cv-shield-analyze-resume.json`) oferece um formulário de upload que envia o PDF para a API e mostra o relatório. Os detalhes de configuração estão em [docs/n8n.md](docs/n8n.md).
+Dois workflows do n8n exportados estão na pasta `n8n/`:
+
+- **Um currículo** (`n8n/cv-shield-analyze-resume.json`): um formulário de upload envia o PDF para a API (`POST /analyze`) e mostra o relatório.
+- **Lote de currículos** (`n8n/cv-shield-lote.json`, "CV Shield - Lote de currículos"): o formulário aceita vários PDFs de uma vez. O n8n separa um item por PDF, envia um de cada vez para a API (com pausa entre eles, para respeitar o limite da conta da Groq, e até 3 novas tentativas se a chamada falhar), junta os resultados e os envia para `POST /batch-report`, que devolve a página HTML com as pilhas. Um PDF que dá erro não derruba os outros. No último passo, o resultado vira o arquivo `relatorio_lote.html`, que se baixa no n8n e se abre no navegador.
+
+A divisão de trabalho é esta: o n8n coordena (recebe, separa, espera, tenta de novo e junta), o Python decide (detectores, regra das pilhas e montagem da página), e a pessoa tem a palavra final.
+
+Os detalhes de configuração dos dois workflows estão em [docs/n8n.md](docs/n8n.md).
 
 ## Testes
 
-A suíte tem 124 testes. A integração com a IA, os endpoints da API e o lote de currículos são testados com mocks, então a suíte nunca depende de rede nem da cota da API.
+A suíte tem 153 testes. A integração com a IA, os endpoints da API e o lote de currículos são testados com mocks, então a suíte nunca depende de rede nem da cota da API.
 
 ```powershell
 python -m unittest discover -s tests
@@ -144,7 +153,7 @@ O que já está mapeado para as próximas etapas:
 - **Fundos em imagem e em degradê:** hoje só retângulos preenchidos contam como fundo no detector de texto escondido.
 - **Lote separado em pastas:** além do relatório HTML, copiar os PDFs do lote para uma pasta por pilha.
 - **Aviso de depreciação nos testes:** resolver o `StarletteDeprecationWarning`, que aparece ao rodar a suíte. Não é erro, mas vale limpar.
-- **Aviso para o RH:** mandar um e-mail ou uma mensagem no Slack quando a pilha "Para revisar" não estiver vazia.
+- **Aviso para o RH:** mandar um e-mail ou uma mensagem no Slack quando a pilha "Atenção" não estiver vazia.
 
 ## Nota de Privacidade
 
@@ -184,7 +193,7 @@ Em qualquer cenário, a decisão sobre cada currículo continua sendo humana: o 
 - [x] **Etapa 8: Integração com n8n e automação de workflow**
 - [ ] **Etapa 9: Testes e validação expandidos** (falta repetir a validação com currículos feitos no Word, Google Docs e Canva)
 - [x] **Etapa 10: Correções da validação** (prompt da IA, falso positivo da faixa colorida, relatório detalhado, ataque visível e parafraseado)
-- [ ] **Etapa 11: Análise em lote de currículos** (comando de pasta e relatório HTML prontos; falta o formulário com vários PDFs no n8n)
+- [x] **Etapa 11: Análise em lote de currículos** (comando de pasta, relatório HTML, endpoint `/batch-report` e workflow de lote no n8n prontos)
 
 ## Status
 
